@@ -7,7 +7,7 @@ from scipy.fft import fft, ifft, fftfreq
 
 def sensor_data_clip():
     date_parser= lambda x:datetime.strptime(x, '%Y/%m/%d %H:%M:%S:%f')
-    df = pd.read_csv('/Users/thomas/Desktop/phd_unipv 2/Industrial_PhD/Data/20241126/csv_acc/infile.csv', sep=';', parse_dates= ['time'], date_parser=date_parser, index_col=None)
+    df = pd.read_csv('/Users/thomas/Desktop/phd_unipv 2/Industrial_PhD/Data/20241126/csv_acc/M001_2024-11-26_07-00-00_gg-9_int-8_th.csv', sep=';', parse_dates= ['time'], date_parser=date_parser, index_col=None)
     return df
 
 def filter_sensor_data_by_chunk(data, sensor_column, chunk_size, threshold):
@@ -75,6 +75,9 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     plt.grid()
     plt.savefig(f'time_domain {sensor_column}.png')
     plt.show()
+
+    plt.hist(data[sensor_column])
+    plt.show()
     filtered_df['filtered_time'] = filtered_time_index
     filtered_df['filtered_sensor_signal'] = filtered_sensor_data
 
@@ -88,7 +91,7 @@ def frequency_conversion(df, sensor_column):
     # Preprocess the data (detrending)
     timedomain_signal = df[sensor_column].dropna()
     timedomain_signal = timedomain_signal - timedomain_signal.mean()
-    fourier = np.abs(np.fft.fft(timedomain_signal.values))
+    fourier = (np.fft.fft(timedomain_signal.values))
     n = timedomain_signal.size
     timestep = 0.005
     freq = np.fft.fftfreq(n, timestep)
@@ -102,7 +105,7 @@ def frequency_conversion(df, sensor_column):
 
 def graphs(sensor_column, filtered_data, df):
     #Time graph of the signal
-    plt.figure(figsize=(16, 5))
+    plt.figure(figsize=(16, 9))
     plt.plot(filtered_data['filtered_time'], filtered_data['filtered_sensor_signal'], label = 'filtered_data', color='r', linestyle='--', linewidth =5)
     plt.plot(df['time'], df[sensor_column], label= 'original')
     plt.title(f"Time-Domain Analysis of Sensor")

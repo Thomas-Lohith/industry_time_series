@@ -11,7 +11,6 @@ def sensor_data_clip():
     return df
 
 def filterby_threshold(data, threshold, sample_period, sensor_column):
-
     if sensor_column not in data.columns:
         raise ValueError(f"Column '{sensor_column}' not found in the data.")
      
@@ -70,7 +69,7 @@ def high_pass_filter(data, cutoff_freq, sampling_rate):
     time_indices = data['time']
     nyquist = 0.5 * sampling_rate
     normalized_cutoff = cutoff_freq / nyquist
-    b, a = butter(1, normalized_cutoff, btype='low', analog=False)
+    b, a = butter(1, normalized_cutoff, btype='high', analog=False)
     return filtfilt(b, a, signal)
 
 
@@ -86,23 +85,18 @@ def graphs(sensor_column, df, dc_removed_fft):
     plt.ylabel('Amplitude')
     plt.show()
 
+df = sensor_data_clip()
+print(df.head())
+#input parametrs 
+sensor_column = '0309101E_x' #should be changed accordingly to the sensor preference 
+sample_period =20# should be cpnverted into 2000 datapoints as 20sec
+threshold = 1.005
+sampling_rate = 50  # Hz (10 ms sampling interval)
+cutoff_freq = 0.5  # Very low frequency for DC component
+dc_removed_high_pass = high_pass_filter(df, cutoff_freq, sampling_rate)
+plt.plot(dc_removed_high_pass)
+plt.show()
+filtered_data = filterby_threshold(df, threshold, sample_period, sensor_column)
 
+fourier, freq, dc_removed_fft = frequency_conversion(df, sensor_column)
 
-if __name__ == '__main__':
-    
-    df = sensor_data_clip()
-    print(df.head())
-    #input parametrs 
-    sensor_column = '0309101E_x' #should be changed accordingly to the sensor preference 
-    chunk_size = 20
-    sample_period =20# should be cpnverted into 2000 datapoints as 20sec
-    threshold = 1.005
-    interval_time= 10
-    sampling_rate = 50  # Hz (10 ms sampling interval)
-    cutoff_freq = 10  # Very low frequency for DC component
-    dc_removed_high_pass = high_pass_filter(df, cutoff_freq, sampling_rate)
-    plt.plot(dc_removed_high_pass)
-    plt.show()
-    filtered_data = filterby_threshold(df, threshold, sample_period, sensor_column)
-
-    fourier, freq, dc_removed_fft = frequency_conversion(df, sensor_column)
