@@ -21,6 +21,18 @@ def high_pass_filter(data, cutoff_freq, sampling_rate):
     data[sensor_column] = dc_removed_signal
     return data
 
+def filter_dc_by_mean(data):
+    signal = data[sensor_column].dropna()
+    signal = signal - signal.mean()
+    data[sensor_column] = signal
+    return data
+
+
+    
+
+
+
+
 def filterby_threshold(data, threshold, sample_period, sensor_column):
     if sensor_column not in data.columns:
         raise ValueError(f"Column '{sensor_column}' not found in the data.")
@@ -63,7 +75,7 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
 sensor_column = '0309101E_x'
 path = '/Users/thomas/Desktop/phd_unipv 2/Industrial_PhD/Data/20241126/csv_acc/M001_2024-11-26_18-00-00_gg-9_int-19_th.csv'
 sampling_rate = 50  # Hz (10 ms sampling interval)
-cutoff_freq = 0.5 # Very low frequency for DC component
+cutoff_freq = 0.1 # Very low frequency for DC component
 #parametrs for threshold script
 sample_period =20 #should be cpnverted into 2000 datapoints as 20sec
 threshold = 0.001
@@ -73,9 +85,10 @@ df = sensor_data_clip(path)
 print(df[sensor_column].head(15))
 print(df.shape)
 
-df_no_dc = high_pass_filter(df, cutoff_freq, sampling_rate)
+df_no_dc = filter_dc_by_mean(df)
 print(df_no_dc[sensor_column].head(15))
 print(df_no_dc.shape)
+
 
 filtered_df = filterby_threshold(df_no_dc, threshold, sample_period, sensor_column)
 print(filtered_df[sensor_column].head(25))

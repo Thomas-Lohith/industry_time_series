@@ -10,28 +10,6 @@ def sensor_data_clip():
     df = pd.read_csv('/Users/thomas/Desktop/phd_unipv 2/Industrial_PhD/Data/20241126/csv_acc/M001_2024-11-26_07-00-00_gg-9_int-8_th.csv', sep=';', parse_dates= ['time'], date_parser=date_parser, index_col=None)
     return df
 
-def filter_sensor_data_by_chunk(data, sensor_column, chunk_size, threshold):
-    # Ensure the column exists in the data
-    if sensor_column not in data.columns:
-        raise ValueError(f"Column '{sensor_column}' not found in the data.")
-    
-    sensor_data = data[sensor_column].dropna()
-    filtered_chunks = []
-    # Process the data in chunks
-    for start in range(0, len(sensor_data), chunk_size):
-        # Define the chunk
-        chunk = sensor_data.iloc[start:start + chunk_size]
-        # Filter the chunk to keep values greater than or equal to the threshold
-        filtered_chunk = chunk[chunk >= threshold] 
-        # Append th e filtered chunk to the list
-        filtered_chunks.append(filtered_chunk)
-
-    # Concatenate all filtered chunks
-    filtered_data = pd.concat(filtered_chunks)
-    print(filtered_data.info())
-    return filtered_data.to_frame(name=sensor_column)
-
-
 
 def filterby_threshold(data, threshold, sample_period, sensor_column):
 
@@ -42,8 +20,6 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     time_indices = data['time']
     filtered_indices = []
     filtered_df = pd.DataFrame(columns= ['filtered_time', 'filtered_sensor_signal'])
-    
-
     i=0
     plt.figure(figsize=(16, 5))
     plt.plot(data['time'], data[sensor_column], label= 'original', alpha=0.7)
@@ -68,7 +44,6 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_sensor_data = sensor_data.iloc[filtered_indices]
 
     plt.scatter(filtered_time_index, filtered_sensor_data, color='red', s=10, label='Filtered Signal')
-
     plt.title(f"Time-Domain Analysis of Sensor")
     plt.xlabel("Time")
     plt.ylabel("Acceleration")
@@ -80,12 +55,8 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     plt.show()
     filtered_df['filtered_time'] = filtered_time_index
     filtered_df['filtered_sensor_signal'] = filtered_sensor_data
-
     return filtered_df
 
-
-
-    
 
 def frequency_conversion(df, sensor_column):
     # Preprocess the data (detrending)
@@ -98,10 +69,6 @@ def frequency_conversion(df, sensor_column):
     freq = freq[:n // 2]
     fourier = fourier[:n // 2]
     return fourier, freq
-
-
-
-
 
 def graphs(sensor_column, filtered_data, df):
     #Time graph of the signal
