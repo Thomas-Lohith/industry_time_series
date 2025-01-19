@@ -27,12 +27,6 @@ def filter_dc_by_mean(data):
     data[sensor_column] = signal
     return data
 
-
-    
-
-
-
-
 def filterby_threshold(data, threshold, sample_period, sensor_column):
     if sensor_column not in data.columns:
         raise ValueError(f"Column '{sensor_column}' not found in the data.")
