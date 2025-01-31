@@ -11,16 +11,6 @@ def sensor_data_clip(path):
     df = pd.read_csv(path, sep=';', parse_dates= ['time'], date_parser=date_parser, index_col=None)
     return df
 
-def high_pass_filter(data, cutoff_freq, sampling_rate):
-    signal = data[sensor_column].dropna()
-    time_indices = data['time']
-    nyquist = 0.5 * sampling_rate
-    normalized_cutoff = cutoff_freq / nyquist
-    b, a = butter(1, normalized_cutoff, btype='high', analog=False)
-    dc_removed_signal = filtfilt(b, a, signal)
-    data[sensor_column] = dc_removed_signal
-    return data
-
 def filter_dc_by_mean(data):
     signal = data[sensor_column].dropna()
     signal = signal - signal.mean()
@@ -68,22 +58,42 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
 
 sensor_column = '0309101E_x'
 path = '/Users/thomas/Desktop/phd_unipv 2/Industrial_PhD/Data/20241126/csv_acc/M001_2024-11-26_18-00-00_gg-9_int-19_th.csv'
-sampling_rate = 50  # Hz (10 ms sampling interval)
-cutoff_freq = 0.1 # Very low frequency for DC component
-#parametrs for threshold script
-sample_period =20 #should be cpnverted into 2000 datapoints as 20sec
-threshold = 0.001
+# sampling_rate = 50  # Hz (10 ms sampling interval)
+# cutoff_freq = 0.1 # Very low frequency for DC component
+# #parametrs for threshold script
 
+# Parameters to explore
+thresholds = [0.0005, 0.001, 0.002, 0.005, ]
+chunk_sizes = [200, 1000, 2000, 5000]
+
+# Store results
+results = []
 
 df = sensor_data_clip(path)
-print(df[sensor_column].head(15))
-print(df.shape)
 
 df_no_dc = filter_dc_by_mean(df)
-print(df_no_dc[sensor_column].head(15))
-print(df_no_dc.shape)
 
+for threshold in thresholds:
+    for chunk_size in chunk_sizes:
+        filtered_df = filterby_threshold(df_no_dc, threshold, chunk_size, sensor_column)
+        # Calculate space savings
+        original_points = len(df_no_dc[sensor_column].dropna())
+        filtered_points = len(filtered_df[sensor_column].dropna())
+        space_savings = 100 * (1 - filtered_points / original_points)
+        
+        # Store result
+        results.append({
+            'Threshold': threshold, 
+            'Chunk Size': chunk_size, 
+            'Original Points': original_points, 
+            'Filtered Points': filtered_points, 
+            'Space Savings (%)': space_savings,
+        })
+        
 
-filtered_df = filterby_threshold(df_no_dc, threshold, sample_period, sensor_column)
-print(filtered_df[sensor_column].head(25))
-print(filtered_df.shape)
+# Display results
+results_df = pd.DataFrame(results)
+print(results_df.head())
+
+# Save to CSV for documentation
+#results_df.to_csv('filtering_signal_preservation_results.csv', index=False)
