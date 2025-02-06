@@ -38,7 +38,8 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
             filtered_indices.extend(range(start,end))
         else:
             i+=1
-    #filtered_time_index = time_indices[filtered_indices]
+    #filtered_time_index = time_indices[filtered_indices]  
+    # #to get only filtered values including time indices and corresponding sensor readings
     filtered_sensor_data = sensor_data.iloc[filtered_indices]
     filtered_df['time'] = data['time']
     filtered_df[sensor_column] = filtered_sensor_data
@@ -55,27 +56,19 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     plt.grid()
     plt.show()
     signal_fil_ratio = len(filtered_indices)/len(data[sensor_column])
-    print(signal_fil_ratio)
     return filtered_df,signal_fil_ratio
 
 def mse_cal(data, sensor_column):
     signal_org = data['original_signal']
     signal_fil = data[sensor_column] 
     np.set_printoptions(precision = 9, suppress = True)
-    #mean = np.mean(signal_fil) 
     MSE = np.square(np.subtract(signal_org,signal_fil)).mean() 
     RMSE = math.sqrt(MSE)
-    print('RMSE VALUE IS:', RMSE)
-    #print('mean VALUE IS:', mean)
     return RMSE
 
 def hist(df,sensor_column):
     np.set_printoptions(precision = 6, suppress = True)
-    counts, bins,_ = plt.hist(df[sensor_column])  # Specify the number of bins
-    #plt.show()
-    # print("counts:",np.float64(counts))
-    # print("bins:", bins)
-    # Intervals between bins
+    counts, bins,_ = plt.hist(df[sensor_column] )  # Specify the number of bins
     bin_intervals = [(bins[i], bins[i+1]) for i in range(len(bins)-1)]
     for i in range(len(bins)-1):
         print("Histogram Intervals:", np.float64(bin_intervals[i]),  "count", counts[i])
@@ -104,20 +97,19 @@ def main():
         rmse = mse_cal(filtered_df, sensor_column)
         RMSE_results.append(rmse)
         signal_filtering_ratio.append(signal_fil_ratio)
-        print(f"Threshold: {threshold}, RMSE: {rmse:.6f}")
+        print(f"Threshold: {threshold}, RMSE: {rmse:.6f}, signal_filtering_ratio: {signal_fil_ratio:.6f}")
         hist(filtered_df, sensor_column)
         #filtered_df.to_csv("filtered_data.csv", index=False)
 
-    rmse_df = pd.DataFrame({'threshold': thresholds, 'RMSE': RMSE_results, 'signal_ratio': signal_filtering_ratio}, columns= ['threshold', 'RMSE'])
+    rmse_df = pd.DataFrame({'threshold': thresholds, 'RMSE': RMSE_results, 'signal_ratio': signal_filtering_ratio}, columns= ['threshold', 'RMSE', 'signal_ratio'])
 
     fig, ax1 = plt.subplots(figsize=(10,8))
     ax2 = ax1.twinx()
-    plt.figure(figsize=(10,5))
     ax1.plot(rmse_df['threshold'], rmse_df['RMSE'], marker = 'o', linestyle = '-')
-    ax2.plot(rmse_df['threshold'], signal_filtering_ratio['signal_ratio'])
+    ax2.plot(rmse_df['threshold'], rmse_df['signal_ratio'])
     ax1.set_xlabel('Threshold')
     ax1.set_ylabel('RMSE')
-    ax2.get_ylabel('signal_filtering_ratio')
+    ax2.set_ylabel('signal_filtering_ratio')
     plt.grid()
     plt.title('threshold vs rmse vs signal_ratio')
     plt.show()
