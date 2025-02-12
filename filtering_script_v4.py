@@ -46,15 +46,15 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df[sensor_column] = filtered_df[sensor_column].fillna(0)
     filtered_df['original_signal'] = sensor_data
 
-    plt.figure(figsize=(16, 5))
-    plt.plot(data['time'], data[sensor_column], label ='original')
-    plt.plot(data['time'], filtered_df[sensor_column], color='g',  label="filtered with Threshold = {}".format(threshold    ))
-    plt.title(f"Time-series signal with the filtering threshold")
-    plt.xlabel("Time")
-    plt.ylabel("Acceleration:")
-    plt.legend()
-    plt.grid()
-    plt.show()
+    # plt.figure(figsize=(16, 5))
+    # plt.plot(data['time'], data[sensor_column], label ='original')
+    # plt.plot(data['time'], filtered_df[sensor_column], color='g',  label="filtered with Threshold = {}".format(threshold    ))
+    # plt.title(f"Time-series signal with the filtering threshold")
+    # plt.xlabel("Time")
+    # plt.ylabel("Acceleration:")
+    # plt.legend()
+    # plt.grid()
+    # plt.show()
     signal_fil_ratio = len(filtered_indices)/len(data[sensor_column])
     return filtered_df,signal_fil_ratio
 
@@ -68,10 +68,26 @@ def mse_cal(data, sensor_column):
 
 def hist(df,sensor_column):
     np.set_printoptions(precision = 6, suppress = True)
-    counts, bins,_ = plt.hist(df[sensor_column] )  # Specify the number of bins
+    counts, bins,_ = plt.hist(df[sensor_column], bins=100 )  # Specify the number of bins
     bin_intervals = [(bins[i], bins[i+1]) for i in range(len(bins)-1)]
     for i in range(len(bins)-1):
         print("Histogram Intervals:", np.float64(bin_intervals[i]),  "count", counts[i])
+
+def printhist(df,sensor_column):
+    counts, bins,_ = plt.hist(df[sensor_column], bins=50)  # Specify the number of bins
+    bin_intervals = [(bins[i], bins[i+1]) for i in range(len(bins)-1)]
+
+     # Generate histogram interval strings
+    s = [f"Histogram Intervals: {np.float64(bin_intervals[i])},  count: {int(counts[i])} \n" for i in range(len(counts))]
+    
+    # Print each interval
+    for line in s:
+        print(line.strip())
+        
+    # Write to file
+    with open('histogram.txt', 'w') as h:
+        h.writelines(s)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Process CSV files, flter sensor data uisng chunk and threshold ")
@@ -84,7 +100,7 @@ def main():
     chunk = args.chunk
     thresholds = [float(x) for x in args.thresholds.split(',')]
     thresholds.sort()
-    sensor_column = '0309101E_x'
+    sensor_column = '03091005_x'
 
     df = sensor_data_clip(path)
     df_no_dc = filter_dc_by_mean(df, sensor_column)
@@ -101,12 +117,14 @@ def main():
         hist(filtered_df, sensor_column)
         #filtered_df.to_csv("filtered_data.csv", index=False)
 
+    printhist(df_no_dc, sensor_column)
+
     rmse_df = pd.DataFrame({'threshold': thresholds, 'RMSE': RMSE_results, 'signal_ratio': signal_filtering_ratio}, columns= ['threshold', 'RMSE', 'signal_ratio'])
 
     fig, ax1 = plt.subplots(figsize=(10,8))
     ax2 = ax1.twinx()
     ax1.plot(rmse_df['threshold'], rmse_df['RMSE'], marker = 'o', linestyle = '-')
-    ax2.plot(rmse_df['threshold'], rmse_df['signal_ratio'])
+    ax2.plot(rmse_df['threshold'], rmse_df['signal_ratio'], marker = 'o', color = 'r')
     ax1.set_xlabel('Threshold')
     ax1.set_ylabel('RMSE')
     ax2.set_ylabel('signal_filtering_ratio')

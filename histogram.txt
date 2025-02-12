@@ -1,0 +1,50 @@
+Histogram Intervals: [-0.010125 -0.009733],  count: 3 
+Histogram Intervals: [-0.009733 -0.00934 ],  count: 1 
+Histogram Intervals: [-0.00934  -0.008947],  count: 2 
+Histogram Intervals: [-0.008947 -0.008555],  count: 3 
+Histogram Intervals: [-0.008555 -0.008162],  count: 2 
+Histogram Intervals: [-0.008162 -0.007769],  count: 7 
+Histogram Intervals: [-0.007769 -0.007377],  count: 4 
+Histogram Intervals: [-0.007377 -0.006984],  count: 10 
+Histogram Intervals: [-0.006984 -0.006591],  count: 7 
+Histogram Intervals: [-0.006591 -0.006198],  count: 9 
+Histogram Intervals: [-0.006198 -0.005806],  count: 24 
+Histogram Intervals: [-0.005806 -0.005413],  count: 49 
+Histogram Intervals: [-0.005413 -0.00502 ],  count: 67 
+Histogram Intervals: [-0.00502  -0.004628],  count: 89 
+Histogram Intervals: [-0.004628 -0.004235],  count: 126 
+Histogram Intervals: [-0.004235 -0.003842],  count: 196 
+Histogram Intervals: [-0.003842 -0.00345 ],  count: 297 
+Histogram Intervals: [-0.00345  -0.003057],  count: 459 
+Histogram Intervals: [-0.003057 -0.002664],  count: 716 
+Histogram Intervals: [-0.002664 -0.002271],  count: 1151 
+Histogram Intervals: [-0.002271 -0.001879],  count: 1731 
+Histogram Intervals: [-0.001879 -0.001486],  count: 3013 
+Histogram Intervals: [-0.001486 -0.001093],  count: 6051 
+Histogram Intervals: [-0.001093 -0.000701],  count: 15894 
+Histogram Intervals: [-0.000701 -0.000308],  count: 54804 
+Histogram Intervals: [-0.000308  0.000085],  count: 126560 
+Histogram Intervals: [0.000085 0.000477],  count: 96976 
+Histogram Intervals: [0.000477 0.00087 ],  count: 30684 
+Histogram Intervals: [0.00087  0.001263],  count: 9958 
+Histogram Intervals: [0.001263 0.001656],  count: 4230 
+Histogram Intervals: [0.001656 0.002048],  count: 2349 
+Histogram Intervals: [0.002048 0.002441],  count: 1436 
+Histogram Intervals: [0.002441 0.002834],  count: 915 
+Histogram Intervals: [0.002834 0.003226],  count: 661 
+Histogram Intervals: [0.003226 0.003619],  count: 464 
+Histogram Intervals: [0.003619 0.004012],  count: 309 
+Histogram Intervals: [0.004012 0.004404],  count: 241 
+Histogram Intervals: [0.004404 0.004797],  count: 184 
+Histogram Intervals: [0.004797 0.00519 ],  count: 107 
+Histogram Intervals: [0.00519  0.005583],  count: 79 
+Histogram Intervals: [0.005583 0.005975],  count: 43 
+Histogram Intervals: [0.005975 0.006368],  count: 34 
+Histogram Intervals: [0.006368 0.006761],  count: 21 
+Histogram Intervals: [0.006761 0.007153],  count: 11 
+Histogram Intervals: [0.007153 0.007546],  count: 11 
+Histogram Intervals: [0.007546 0.007939],  count: 5 
+Histogram Intervals: [0.007939 0.008331],  count: 1 
+Histogram Intervals: [0.008331 0.008724],  count: 2 
+Histogram Intervals: [0.008724 0.009117],  count: 3 
+Histogram Intervals: [0.009117 0.00951 ],  count: 1 
