@@ -12,6 +12,10 @@ def sensor_data_clip(path):
     df = pd.read_csv(path, sep=';', parse_dates= ['time'], date_parser=date_parser, index_col=None)
     return df
 
+# def sesnor_data_1day(path):
+#     date_parser = 
+
+
 def filter_dc_by_mean(data, sensor_column):
     signal = data[sensor_column].dropna()
     signal = signal - signal.mean()
@@ -46,15 +50,16 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df[sensor_column] = filtered_df[sensor_column].fillna(0)
     filtered_df['original_signal'] = sensor_data
 
-    # plt.figure(figsize=(16, 5))
-    # plt.plot(data['time'], data[sensor_column], label ='original')
-    # plt.plot(data['time'], filtered_df[sensor_column], color='g',  label="filtered with Threshold = {}".format(threshold    ))
-    # plt.title(f"Time-series signal with the filtering threshold")
-    # plt.xlabel("Time")
-    # plt.ylabel("Acceleration:")
-    # plt.legend()
-    # plt.grid()
-    # plt.show()
+    plt.figure(figsize=(16, 5))
+    plt.plot(data['time'], data[sensor_column], label ='original')
+    plt.plot(data['time'], filtered_df[sensor_column], color='g', label="filtered with Threshold = {}".format(threshold))
+    plt.title(f"Time-series signal with the filtering threshold")
+    plt.hlines(y=threshold, label='threshold', colors='r', linestyles='--', xmin=0, xmax=len(data))
+    plt.xlabel("Time")
+    plt.ylabel("Acceleration:")
+    plt.legend()
+    plt.grid()
+    plt.show()
     signal_fil_ratio = len(filtered_indices)/len(data[sensor_column])
     return filtered_df,signal_fil_ratio
 
