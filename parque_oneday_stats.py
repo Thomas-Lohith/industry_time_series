@@ -46,7 +46,7 @@ def load_data_polars(filepath):
         else:
             raise ValueError("Could not identify a time column. Please specify the time column name manually.")
     
-    print(f"Found {len(sensor_columns)} sensor columns: {sensor_columns}")
+    #print(f"Found {len(sensor_columns)} sensor columns: {sensor_columns}")
     print(f"Using '{time_column}' as the time column")
     
     sensor_columns = sensor_columns[:3]
@@ -74,7 +74,6 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
     
     # Process only specified sensor columns, ignoring 'time'
     for col in sensor_columns:
-        if col in df.columns and col != 'time':
             # Compute the mean as a scalar
             col_mean = df.select(pl.col(col).mean()).collect().item()
             
@@ -84,7 +83,8 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
             )
 
     print("\nProcessed Data (First 5 Rows):")
-    print(result_df.head())
+    
+    #print(result_df.head(1))
 
     return result_df
 
@@ -93,14 +93,14 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
 
 
 
-def visualize_all_sensors(df, sensor_columns, time_column, sample_interval=1000):
+def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     """
     Create a plot showing all sensors' z-axis acceleration data
     Using sampling to avoid memory issues and plotting delays
     """
     print(f"Visualizing all sensors with sample interval of {sample_interval}...")
     memory_usage()
-    
+
 
     # Select only necessary columns and sample at specified interval
     sampled_df = (df.select([time_column] + sensor_columns)  # Keep relevant columns
@@ -113,11 +113,13 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval=1000)
     memory_usage()
     
     # Convert timestamp to datetime if it's not already
-    if pd.api.types.is_string_dtype(sampled_df[time_column]):
-        sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f')
+    #if pd.api.types.is_string_dtype(sampled_df[time_column]):
+    #print(sampled_df['time'][350990:360010])
+    sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
     
+
     # Create figure
-    plt.figure(figsize=(14, 8))
+    plt.figure(figsize=(16, 9))
     
 
     # Plot each sensor
@@ -137,6 +139,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval=1000)
     
     plt.tight_layout()
     plt.savefig('all_sensors_acceleration.png', dpi=300)
+    plt.show()
     plt.close()
     
     print("All sensors visualization saved to all_sensors_acceleration.png")
@@ -272,7 +275,7 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
 
 def main():
     # Path to your parquet file
-    parquet_file = "/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Data/20241126/csv_acc/combined.parquet"  # Update with your actual file path
+    parquet_file = "/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Data/20250208/csv_acc/combined.parquet"  # Update with your actual file path
     
     # Load data using Polars
     df, sensor_columns, time_column = load_data_polars(parquet_file)
@@ -280,7 +283,7 @@ def main():
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
     
     # Visualize all sensors (sampled for performance)
-    visualize_all_sensors(no_dc_df, sensor_columns, time_column, sample_interval=1000)
+    visualize_all_sensors(no_dc_df, sensor_columns, time_column, sample_interval= 8640023)
     
     # Calculate and compare sensor statistics
     stats_df = compare_sensors_statistics(no_dc_df, sensor_columns, time_column)
