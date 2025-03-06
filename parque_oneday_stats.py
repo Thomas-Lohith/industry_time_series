@@ -49,7 +49,10 @@ def load_data_polars(filepath):
     #print(f"Found {len(sensor_columns)} sensor columns: {sensor_columns}")
     print(f"Using '{time_column}' as the time column")
     
-    sensor_columns = sensor_columns[:3]
+   
+    campate_sensor_columns = ['03091200_x', '030911EF_x', '030911FF_x'] 
+    sensor_columns = [col for col in campate_sensor_columns if col in df.columns]
+    #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
     memory_usage()
     return df, sensor_columns, time_column
 
@@ -87,10 +90,6 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
     #print(result_df.head(1))
 
     return result_df
-
-
-
-
 
 
 def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
@@ -144,7 +143,6 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
-
 
 
 def compare_sensors_statistics(df, sensor_columns, time_column):
@@ -275,7 +273,7 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
 
 def main():
     # Path to your parquet file
-    parquet_file = "/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Data/20250208/csv_acc/combined.parquet"  # Update with your actual file path
+    parquet_file = "/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Data/20250212/csv_acc/combined_02_12_24.parquet"  # Update with your actual file path
     
     # Load data using Polars
     df, sensor_columns, time_column = load_data_polars(parquet_file)
@@ -283,7 +281,8 @@ def main():
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
     
     # Visualize all sensors (sampled for performance)
-    visualize_all_sensors(no_dc_df, sensor_columns, time_column, sample_interval= 8640023)
+
+    visualize_all_sensors(no_dc_df, sensor_columns, time_column, sample_interval= 360000)
     
     # Calculate and compare sensor statistics
     stats_df = compare_sensors_statistics(no_dc_df, sensor_columns, time_column)
