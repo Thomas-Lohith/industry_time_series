@@ -50,7 +50,7 @@ def load_data_polars(filepath):
     print(f"Using '{time_column}' as the time column")
     
    
-    campate_sensor_columns = ['03091200_x', '030911EF_x', '030911FF_x'] 
+    campate_sensor_columns = ['0309101E_x'] 
     sensor_columns = [col for col in campate_sensor_columns if col in df.columns]
     #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
     memory_usage()
@@ -133,9 +133,10 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     plt.grid(True, alpha=0.3)
     
     # Format x-axis labels
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    plt.xticks(rotation=45)
-    
+    # plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S:%f'))
+    # plt.xticks(rotation=45)
+    #plt.gca().set_xticklabels([label.get_text()[:-3] for label in plt.gca().get_xticklabels()])
+
     plt.tight_layout()
     plt.savefig('all_sensors_acceleration.png', dpi=300)
     plt.show()
@@ -273,7 +274,7 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
 
 def main():
     # Path to your parquet file
-    parquet_file = "/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Data/20250212/csv_acc/combined_02_12_24.parquet"  # Update with your actual file path
+    parquet_file = "/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Data/20241126/csv_acc/sample_17hr_26_11_2024.parquet"  # Update with your actual file path
     
     # Load data using Polars
     df, sensor_columns, time_column = load_data_polars(parquet_file)
