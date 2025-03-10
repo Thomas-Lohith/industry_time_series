@@ -115,8 +115,6 @@ def main():
     # Load and preprocess data
     df = sensor_data_clip(path, sensor_column)
     df_no_dc = filter_dc_by_mean(df, sensor_column)
-
-    print(df_no_dc.head(100))
   
     RMSE_results = []
     signal_filtering_ratio = []

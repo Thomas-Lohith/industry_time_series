@@ -50,7 +50,7 @@ def load_data_polars(filepath):
     print(f"Using '{time_column}' as the time column")
     
    
-    campate_sensor_columns = ['0309101E_x'] 
+    campate_sensor_columns = ['0309101E_x', '030911EF_x', '030911FF_x'] 
     sensor_columns = [col for col in campate_sensor_columns if col in df.columns]
     #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
     memory_usage()
