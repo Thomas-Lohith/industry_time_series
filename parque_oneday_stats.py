@@ -49,9 +49,10 @@ def load_data_polars(filepath):
     #print(f"Found {len(sensor_columns)} sensor columns: {sensor_columns}")
     print(f"Using '{time_column}' as the time column")
     
-   
-    campate_sensor_columns = ['0309101E_x', '030911EF_x', '030911FF_x'] 
-    sensor_columns = [col for col in campate_sensor_columns if col in df.columns]
+    # sensors 99,100,101
+    campate2_sensor_columns = ['030911D2_x', '03091005_x', '0309101F_x']
+    campate1_sensor_columns = ['03091200_x', '030911EF_x', '030911FF_x'] 
+    sensor_columns = [col for col in campate2_sensor_columns if col in df.columns]
     #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
     memory_usage()
     return df, sensor_columns, time_column
@@ -108,6 +109,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     .to_pandas()
     )
     
+
     print(f"Sampled data shape: {sampled_df.shape}")
     memory_usage()
     
@@ -116,6 +118,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     #print(sampled_df['time'][350990:360010])
     sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
     
+    print(sampled_df.head())
 
     # Create figure
     plt.figure(figsize=(16, 9))
