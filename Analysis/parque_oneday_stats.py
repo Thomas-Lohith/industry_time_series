@@ -17,21 +17,14 @@ def load_data_polars(filepath):
     """Load parquet file using Polars for memory efficiency"""
     print("Loading data with Polars...")
     memory_usage()
-    
     # Load the data
-    df = pl.scan_parquet(filepath)
-    
-    # # Print schema to verify column names and types
-    # print("Schema:")
-    # print(df.collect_schema())
-    
+    df = pl.scan_parquet(filepath)    
     # Count total rows without loading everything to memory
     total_rows = df.select(pl.len()).collect().item()
     print(f"Total rows: {total_rows:,}")
     
     # Get column names for sensor data (assuming pattern ends with _z for vertical direction)
     sensor_columns = [col for col in df.collect_schema().keys() if col != 'time']
-    
     
     # Try to identify time column
     time_column_candidates = ['time', 'timestamp', 'date']
