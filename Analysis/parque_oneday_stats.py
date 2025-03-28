@@ -6,6 +6,7 @@ import numpy as np
 from datetime import datetime
 import psutil
 import os
+from scipy.signal import find_peaks
 
 def memory_usage():
     """Print current memory usage"""
@@ -85,7 +86,6 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
 
     return result_df
 
-
 def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     """
     Create a plot showing all sensors' z-axis acceleration data
@@ -140,7 +140,6 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
-
 
 def compare_sensors_statistics(df, sensor_columns, time_column):
     """Calculate and compare basic statistics for each sensor"""
@@ -268,9 +267,96 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     print("Sensor histograms saved to sensor_histograms.png")
     memory_usage()
 
+def count_signal_peaks(df: pl.DataFrame, sensor_column: str, height_threshold: float = None, distance: int = None) -> tuple[int, np.ndarray]:
+    """
+    Count the number of peaks in a sensor's vibration signal.
+    
+    Parameters:
+    -----------
+    df : pl.DataFrame
+        The input Polars DataFrame containing the sensor data
+    sensor_column : str
+        Name of the column containing the sensor data
+    height_threshold : float, optional
+        Minimum height of peaks to be counted. If None, automatically determined
+    distance : int, optional
+        Minimum number of samples between peaks. If None, automatically determined
+    
+    Returns:
+    --------
+    tuple[int, np.ndarray]
+        Number of peaks and array of peak indices
+    """
+    # Convert the sensor data to numpy array
+    signal = df.select(pl.col(sensor_column)).collect().to_numpy().flatten()
+    
+    # If height threshold is not provided, use 2 standard deviations
+    if height_threshold is None:
+        height_threshold = 2 * np.std(signal)
+    
+    # If distance is not provided, use 1% of the signal length
+    if distance is None:
+        distance = len(signal) // 200
+    
+    # Find peaks
+    peaks, _ = find_peaks(signal, height=height_threshold, distance=distance)
+    
+    return len(peaks), peaks
+
+def visualize_peaks(df: pl.DataFrame, sensor_column: str, time_column: str, sample_interval: int = 36000):
+    """
+    Visualize the peaks found in the sensor signal.
+    
+    Parameters:
+    -----------
+    df : pl.DataFrame
+        The input Polars DataFrame
+    sensor_column : str
+        Name of the column containing the sensor data
+    time_column : str
+        Name of the column containing the time data
+    sample_interval : int
+        Number of samples to plot
+    """
+    # Get peak information
+    num_peaks, peak_indices = count_signal_peaks(df, sensor_column)
+    print(f"Found {num_peaks} peaks in {sensor_column}")
+    
+    # Sample the data for visualization
+    sampled_df = (df.select([time_column, sensor_column])
+                 .slice(0, sample_interval)
+                 .collect()
+                 .to_pandas())
+    
+    # Convert timestamp to datetime
+    sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
+    
+    # Create the plot
+    plt.figure(figsize=(16, 9))
+    plt.plot(sampled_df[time_column], sampled_df[sensor_column], label='Signal', alpha=0.7)
+    
+    # Plot peaks
+    peak_times = sampled_df[time_column].iloc[peak_indices[peak_indices < sample_interval]]
+    peak_values = sampled_df[sensor_column].iloc[peak_indices[peak_indices < sample_interval]]
+    plt.scatter(peak_times, peak_values, color='red', label='Peaks', zorder=5)
+    
+    plt.title(f'Signal Peaks for {sensor_column}')
+    plt.xlabel('Time')
+    plt.ylabel('Acceleration')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    
+    # Save the plot
+    #plt.savefig(f'peaks_{sensor_column}.png', dpi=300)
+    #plt.close()
+    
+    print(f"Peak visualization saved to peaks_{sensor_column}.png")
+
 def main():
     # Path to your parquet file
-    parquet_file = "/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Data/20241126/csv_acc/sample_17hr_26_11_2024.parquet"  # Update with your actual file path
+    parquet_file = "/Users/thomas/Data/20241126/csv_acc/sample_17hr_26_11_2024.parquet"  # Update with your actual file path
     
     # Load data using Polars
     df, sensor_columns, time_column = load_data_polars(parquet_file)
@@ -278,11 +364,16 @@ def main():
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
     
     # Visualize all sensors (sampled for performance)
-
-    visualize_all_sensors(no_dc_df, sensor_columns, time_column, sample_interval= 360000)
+    visualize_all_sensors(no_dc_df, sensor_columns, time_column, sample_interval=360000)
+    
+    # Count and visualize peaks for each sensor
+    for sensor in sensor_columns:
+        num_peaks, _ = count_signal_peaks(no_dc_df, sensor)
+        print(f"Number of peaks in {sensor}: {num_peaks}")
+        visualize_peaks(no_dc_df, sensor, time_column, sample_interval=360000)
     
     # Calculate and compare sensor statistics
-    stats_df = compare_sensors_statistics(no_dc_df, sensor_columns, time_column)
+    #stats_df = compare_sensors_statistics(no_dc_df, sensor_columns, time_column)
     
     # Create histograms for each sensor
     visualize_sensor_histograms(no_dc_df, sensor_columns)
