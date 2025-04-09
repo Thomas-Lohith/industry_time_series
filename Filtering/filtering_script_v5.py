@@ -1,10 +1,8 @@
 import argparse
 import numpy as np
 import pandas as pd
-import polars as pl
 from datetime import datetime
 import matplotlib.pyplot as plt, mpld3
-import math
 import time
 
 def sensor_data_clip(path, sensor_column):
@@ -51,6 +49,18 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df[sensor_column] = filtered_df[sensor_column].fillna(0)
     filtered_df['original_signal'] = sensor_data
     
+    # Optional: Visualize each filtered result
+    plt.figure(figsize=(16, 5))
+    plt.plot(data['time'], data[sensor_column], label ='original')
+    plt.plot(data['time'], filtered_df[sensor_column], color='g', label="filtered with Threshold = {}".format(threshold))
+    plt.title(f"Time-series signal with the filtering threshold")
+    plt.hlines(y=threshold, label='threshold = {}'.format(threshold), colors='r', linestyles='--', xmin=0, xmax=len(data))
+    plt.xlabel("Time")
+    plt.ylabel("Acceleration:")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
     # Calculate ratio of filtered data to original data
     signal_fil_ratio = len(filtered_indices) / len(data[sensor_column])
     
@@ -116,7 +126,7 @@ def main():
 
     # Load and preprocess data
     df = sensor_data_clip(path, sensor_column)
-    df_no_dc = filter_dc_by_mean(df[:2000], sensor_column)
+    df_no_dc = filter_dc_by_mean(df[:10000], sensor_column)
   
     RMSE_results = []
     signal_filtering_ratio = []
@@ -129,19 +139,6 @@ def main():
         signal_filtering_ratio.append(signal_fil_ratio)
         print(f"Threshold: {threshold}, RMSE: {rmse:.6f}, signal_filtering_ratio: {signal_fil_ratio:.6f}")
         
-        # Optional: Visualize each filtered result
-        plt.figure(figsize=(16, 5))
-        plt.plot(df_no_dc['time'], df_no_dc[sensor_column], label='Original')
-        plt.plot(df_no_dc['time'], filtered_df[sensor_column], color='r', label=f"Filtered (Threshold = {threshold})")
-        plt.title(f"Time-series signal with filtering threshold = {threshold}")
-        plt.xlabel("Time")
-        plt.ylabel(f"Acceleration: {sensor_column}")
-        #plt.savefig(f'filtered_signal_{threshold}.png')
-        plt.grid()  
-        plt.show()
-        
-
-
     # Generate histogram of original data
     printhist(df_no_dc, sensor_column)
 
