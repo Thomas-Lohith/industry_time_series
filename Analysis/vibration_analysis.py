@@ -7,6 +7,7 @@ from datetime import datetime
 import psutil
 import os
 from scipy.signal import find_peaks
+import argparse
 
 def memory_usage():
     """Print current memory usage"""
@@ -19,34 +20,48 @@ def load_data_polars(filepath):
     print("Loading data with Polars...")
     memory_usage()
     # Load the data
-    df = pl.scan_parquet(filepath)    
-    # Count total rows without loading everything to memory
-    total_rows = df.select(pl.len()).collect().item()
-    print(f"Total rows: {total_rows:,}")
     
-    # Get column names for sensor data (assuming pattern ends with _z for vertical direction)
-    sensor_columns = [col for col in df.collect_schema().keys() if col != 'time']
-    
-    # Try to identify time column
-    time_column_candidates = ['time', 'timestamp', 'date']
-    time_column = next((col for col in df.collect_schema().keys() if col.lower() in time_column_candidates), None)
-    
-    if not time_column:
-        # If no obvious time column name found, assume the first column that's not a sensor column
-        all_columns = list(df.collect_schema().keys())
-        remaining_columns = [col for col in all_columns if col not in sensor_columns]
-        if remaining_columns:
-            time_column = remaining_columns[0]
-        else:
-            raise ValueError("Could not identify a time column. Please specify the time column name manually.")
-    
-    #print(f"Found {len(sensor_columns)} sensor columns: {sensor_columns}")
-    print(f"Using '{time_column}' as the time column")
+    check1 = filepath.endswith('.csv')
+    check2 = filepath.endswith('.parquet')
+    if check1:
+        df = pl.read_csv(filepath, separator= ';')
+        print('reading the csv file:')
+        # Count total rows without loading everything to memory
+        total_rows = df.select(pl.count()).item() #use .collect if we use scan_csv function
+        print(f"Total rows: {total_rows:,}")
+        
+        print(df.head())
+        # Get column names for sensor data (assuming pattern ends with _z for vertical direction)
+        sensor_columns = [col for col in df.columns if col != 'time']
+        
+        # Try to identify time column
+        time_column_candidates = ['time', 'timestamp', 'date']
+        time_column = next((col for col in df.columns if col in time_column_candidates), None)
+        print(f"Found {len(sensor_columns)} sensor columns:")
+        print(f"Using '{time_column}' as the time column")
+    if check2:
+        df = pl.scan_parquet(filepath)    
+        # Count total rows without loading everything to memory
+        total_rows = df.select(pl.len()).collect().item()
+        print(f"Total rows: {total_rows:,}")
+        
+        # Get column names for sensor data (assuming pattern ends with _z for vertical direction)
+        sensor_columns = [col for col in df.collect_schema().keys() if col != 'time']
+        
+        # Try to identify time column
+        time_column_candidates = ['time', 'timestamp', 'date']
+        time_column = next((col for col in df.collect_schema().keys() if col.lower() in time_column_candidates), None)
+        
+        print(f"Found {len(sensor_columns)} sensor columns:")
+        print(f"Using '{time_column}' as the time column")
     
     # sensors 99,100,101
     campate2_sensor_columns = ['030911D2_x', '03091005_x', '0309101F_x']
-    campate1_sensor_columns = ['03091200_x', '030911EF_x', '030911FF_x'] 
-    sensor_columns = [col for col in campate2_sensor_columns if col in df.columns]
+    #sensors in order 53->52->51
+    campate1b_sensor_columns = ['0309100F_x', '030910F6_x', '0309101E_x']
+    #sensors in order 106->105->104
+    campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x'] 
+    sensor_columns = [col for col in campate1a_sensor_columns if col in df.columns]
     #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
     memory_usage()
     return df, sensor_columns, time_column
@@ -59,7 +74,7 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
     # Process only specified sensor columns, ignoring 'time'
     for col in sensor_columns:
             # Compute the mean as a scalar
-            col_mean = df.select(pl.col(col).mean()).collect().item()
+            col_mean = df.select(pl.col(col).mean()).item() #use .collect.item() if we scan_csv or prquet
             
             # Subtract mean and update the column
             result_df = result_df.with_columns(
@@ -72,24 +87,17 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
 
     return result_df
 
-def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
+def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_mins):
 
-    """
-    Create a plot showing all sensors' z-axis acceleration data
-    Using sampling to avoid memory issues and plotting delays
-    """
-    print(f"Visualizing all sensors with sample interval of {sample_interval}...")
+    print(f"Visualizing all sensors with sample interval of {start_time} to {duration_mins}...")
     memory_usage()
-
 
     # Select only necessary columns and sample at specified interval
     sampled_df = (df.select([time_column] + sensor_columns)  # Keep relevant columns
-    .slice(0, sample_interval)  # Select the first 2000 rows
-    .collect()
+    #.collect() used if you are scanning the file
     .to_pandas()
     )
     
-
     print(f"Sampled data shape: {sampled_df.shape}")
     memory_usage()
     
@@ -99,6 +107,12 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
     
     print(sampled_df.head())
+
+    #PLOT ONLY duration we want to analyse 
+    start_time = pd.to_datetime(start_time)
+    end_time = start_time + pd.Timedelta(minutes=duration_mins)
+    #limit to the specific time frame
+    sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
 
     # Create figure
     plt.figure(figsize=(16, 9))
@@ -121,9 +135,9 @@ def visualize_all_sensors(df, sensor_columns, time_column, sample_interval):
     #plt.gca().set_xticklabels([label.get_text()[:-3] for label in plt.gca().get_xticklabels()])
 
     plt.tight_layout()
-    plt.savefig('all_sensors_acceleration.png', dpi=300)
+    #plt.savefig('all_sensors_acceleration.png', dpi=300)
     plt.show()
-    plt.close()
+    
     
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
@@ -261,11 +275,11 @@ def count_signal_peaks(df: pl.DataFrame, sensor_column: str, height_threshold: f
     
     # If height threshold is not provided, use 2 standard deviations
     if height_threshold is None:
-        height_threshold = 3 * np.std(signal)
+        height_threshold = 2 * np.std(signal)
     
     # If distance is not provided, use 1% of the signal length
     if distance is None:
-        distance = len(signal) // 1000
+        distance = len(signal) // 5000
     
     # Find peaks
     peaks, _ = find_peaks(signal, height=height_threshold, distance=distance)
@@ -309,64 +323,31 @@ def visualize_peaks(df: pl.DataFrame, sensor_column: str, time_column: str, samp
     
     print(f"Peak visualization saved to peaks_{sensor_column}.png")
 
-def filter_by_month(df: pl.DataFrame, time_column: str, month: int, year: int = None) -> pl.DataFrame:
-    """
-    Filter the DataFrame to include only data from a specific month.
-    
-    Parameters:
-    -----------
-    df : pl.DataFrame
-        The input Polars DataFrame
-    time_column : str
-        Name of the column containing the time data
-    month : int
-        Month to filter (1-12)
-    year : int, optional
-        Year to filter. If None, will use any year
-    
-    Returns:
-    --------
-    pl.DataFrame
-        Filtered DataFrame containing only data from the specified month
-    """
-    # Convert time column to datetime if it's not already
-    df = df.with_columns(
-        pl.col(time_column).str.strptime(pl.Datetime, format='%Y/%m/%d %H:%M:%S:%f', strict=False)
-    )
-    
-    # Filter by month (and year if specified)
-    if year is not None:
-        filtered_df = df.filter(
-            (pl.col(time_column).dt.month() == month) & 
-            (pl.col(time_column).dt.year() == year)
-        )
-    else:
-        filtered_df = df.filter(pl.col(time_column).dt.month() == month)
-    
-    print(f"Filtered data for month {month}" + (f" year {year}" if year else ""))
-    print(f"Original rows: {df.height}, Filtered rows: {filtered_df.height}")
-    
-    return filtered_df
-
 def main():
-    # Path to your parquet file
-    parquet_file = '/Users/thomas/Data/sample.parquet'
-    
+    parser = argparse.ArgumentParser('Analyse the vibration realting the dyanmic weighing data')
+    parser.add_argument('--path', type = str, required=True, help= 'path for the file')
+    parser.add_argument('--start_time', type=str, required=True, help= 'starting time frame interedted in')
+    parser.add_argument('--duration_mins', type=float, required=True, help = 'duration in mins of time frame interested')
+
+    args = parser.parse_args()
+    path = args.path # Path to your parquet file
+    start_time = args.start_time 
+    duration_mins = args.duration_mins
+      
     # Load data using Polars
-    df, sensor_columns, time_column = load_data_polars(parquet_file)
-    
-    # Filter data for a specific month (e.g., March = 3)
-    # You can also specify the year if needed
-    filtered_df = filter_by_month(df, time_column, month=3, year=2024)  # Example: March 2024
-    
+    df, sensor_columns, time_column = load_data_polars(path)
+
     # Process the filtered data
-    no_dc_df = filter_dc_by_mean(filtered_df, sensor_columns)
+    no_dc_df = filter_dc_by_mean(df, sensor_columns)
+
+    # visualise each sensor in campate for a sample interval
+    visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
     
     # Count and visualize peaks for each sensor
-    for sensor in sensor_columns:
-        num_peaks, _ = count_signal_peaks(no_dc_df, sensor)
-        print(f"Number of peaks in {sensor}: {num_peaks}")
-        visualize_peaks(no_dc_df, sensor, time_column, sample_interval=6000)
+    # for sensor in sensor_columns:
+    #     num_peaks, _ = count_signal_peaks(no_dc_df, sensor)
+    #     print(f"Number of peaks in {sensor}: {num_peaks}")
+    #     visualize_peaks(no_dc_df, sensor, time_column, sample_interval=6000)
     
     print("Analysis complete!")
     memory_usage()
