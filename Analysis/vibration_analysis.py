@@ -8,6 +8,7 @@ import psutil
 import os
 from scipy.signal import find_peaks
 import argparse
+import plotly.graph_objects as go
 
 def memory_usage():
     """Print current memory usage"""
@@ -29,8 +30,7 @@ def load_data_polars(filepath):
         # Count total rows without loading everything to memory
         total_rows = df.select(pl.count()).item() #use .collect if we use scan_csv function
         print(f"Total rows: {total_rows:,}")
-        
-        print(df.head())
+    
         # Get column names for sensor data (assuming pattern ends with _z for vertical direction)
         sensor_columns = [col for col in df.columns if col != 'time']
         
@@ -88,7 +88,6 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
     return result_df
 
 def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_mins):
-
     print(f"Visualizing all sensors with sample interval of {start_time} to {duration_mins}...")
     memory_usage()
 
@@ -97,16 +96,11 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     #.collect() used if you are scanning the file
     .to_pandas()
     )
-    
     print(f"Sampled data shape: {sampled_df.shape}")
     memory_usage()
     
-    # Convert timestamp to datetime if it's not already
-    #if pd.api.types.is_string_dtype(sampled_df[time_column]):
-    #print(sampled_df['time'][350990:360010])
     sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
-    
-    print(sampled_df.head())
+    #print(sampled_df.head())
 
     #PLOT ONLY duration we want to analyse 
     start_time = pd.to_datetime(start_time)
@@ -114,31 +108,58 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     #limit to the specific time frame
     sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
 
-    # Create figure
-    plt.figure(figsize=(16, 9))
+    # # Create figure
+    # plt.figure(figsize=(16, 9))
+    # # Plot each sensor
+    # for sensor in sensor_columns:
+    #     plt.plot(sampled_df[time_column], sampled_df[sensor], label=sensor, linewidth=1, alpha=0.7)
+    # # Format the plot
+    # plt.title('Acceleration Data from Multiple Sensors')
+    # plt.xlabel('Time')
+    # plt.ylabel('Acceleration')
+    # plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+    # plt.grid(True, alpha=0.3)
+    # plt.tight_layout()
+    # #plt.savefig('capmate_1a_sensor_vibrations.svg', format= 'svg')
+    # plt.show()
     
+    fig = go.Figure()
 
-    # Plot each sensor
+    # Loop over each sensor and add a trace to the figure
     for sensor in sensor_columns:
-        plt.plot(sampled_df[time_column], sampled_df[sensor], label=sensor, linewidth=1, alpha=0.7)
-    
-    # Format the plot
-    plt.title('Acceleration Data from Multiple Sensors')
-    plt.xlabel('Time')
-    plt.ylabel('Acceleration')
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
-    plt.grid(True, alpha=0.3)
-    
-    # Format x-axis labels
-    # plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S:%f'))
-    # plt.xticks(rotation=45)
-    #plt.gca().set_xticklabels([label.get_text()[:-3] for label in plt.gca().get_xticklabels()])
+        fig.add_trace(go.Scatter(
+            x=sampled_df[time_column],  # Time data for the x-axis
+            y=sampled_df[sensor],  # Sensor data for the y-axis
+            mode='lines',  # Line plot
+            name=sensor,  # Label the trace with the sensor name
+            line=dict(width=1),  # Line width
+            opacity=0.7  # Line transparency
+        ))
 
-    plt.tight_layout()
-    #plt.savefig('all_sensors_acceleration.png', dpi=300)
-    plt.show()
-    
-    
+    # Update layout for the plot
+    fig.update_layout(
+        title='Acceleration Data from Sensors in campate_1a',  # Title of the plot
+        xaxis_title='Time',  # Label for the X-axis
+        yaxis_title='Acceleration',  # Label for the Y-axis
+        legend_title='Sensors',  # Title for the legend
+        legend=dict(
+            x=0.5,  # Position of the legend
+            y=-0.15,  # Below the plot
+            xanchor='center',  # Center the legend horizontally
+            yanchor='top',  # Align the top of the legend
+            orientation='h',  # Horizontal orientation
+            traceorder='normal',  # Order in which the traces are displayed
+            font=dict(size=12)  # Font size for legend
+        ),
+        template='plotly_dark',  # Optional: dark template for styling
+        showlegend=True,  # Show the legend
+        hovermode='closest',  # Show closest data point on hover
+        margin=dict(b=60),  # Adjust the bottom margin to fit legend
+    )
+
+    # Display the plot
+    fig.show()
+    fig.write_html('vibration_data_sensors.html')
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
 
@@ -247,12 +268,10 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     
     # Create figure
     plt.figure(figsize=(16, 16))
-    
     # Sample data for histogram using filter instead of sample
     # For lazy frames, we need to use a different approach than sample()
     n = 100  # Take every nth row
-    sampled_df = df.select(sensor_columns).filter(pl.arange(0, pl.len()).mod(n) == 0).collect()
-    
+    sampled_df = df.select(sensor_columns).filter(pl.arange(0, pl.len()).mod(n) == 0).collect() 
     # Plot histogram for each sensor
     for i, sensor in enumerate(sensor_columns, 1):
         plt.subplot(grid_size, grid_size, i)
@@ -262,7 +281,8 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
         plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('sensor_histograms.png', dpi=300)
+    #plt.savefig('sensor_histograms.png', dpi=300)
+    plt.show()
     plt.close()
     
     print("Sensor histograms saved to sensor_histograms.png")

@@ -1,4 +1,4 @@
-some events are:
+/Users/thomas/Data/M001_2025-03-01_00-00-00_gg-106_int-1_th.csvsome events are:
  250     2025-01-03 00:58:00
 314     2025-01-03 01:54:00
 15882   2025-02-03 00:00:00
