@@ -88,7 +88,7 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
     return result_df
 
 def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_mins):
-    print(f"Visualizing all sensors with sample interval of {start_time} to {duration_mins}...")
+    print(f"Visualizing all sensors with sample interval from {start_time} to {duration_mins} mins...")
     memory_usage()
 
     # Select only necessary columns and sample at specified interval
@@ -151,7 +151,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
             traceorder='normal',  # Order in which the traces are displayed
             font=dict(size=12)  # Font size for legend
         ),
-        template='plotly_dark',  # Optional: dark template for styling
+        #template='plotly_dark',  # Optional: dark template for styling
         showlegend=True,  # Show the legend
         hovermode='closest',  # Show closest data point on hover
         margin=dict(b=60),  # Adjust the bottom margin to fit legend
@@ -159,9 +159,13 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
 
     # Display the plot
     fig.show()
-    fig.write_html('vibration_data_sensors.html')
+    fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/events_with_less_trafic/vibration_data_{start_time}.html')
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
+
+
+
+
 
 def compare_sensors_statistics(df, sensor_columns, time_column):
     """Calculate and compare basic statistics for each sensor"""
