@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import matplotlib.pyplot as plt, mpld3
 import time
+import math
 
 def sensor_data_clip(path, sensor_column):
     # Load data from parquet file with specified columns
@@ -19,6 +20,8 @@ def filter_dc_by_mean(data, sensor_column):
     return data
 
 def filterby_threshold(data, threshold, sample_period, sensor_column):
+
+    #print(data.head(100))
     # Extract sensor data
     sensor_data = data[sensor_column]
     filtered_indices = []
@@ -49,17 +52,17 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df[sensor_column] = filtered_df[sensor_column].fillna(0)
     filtered_df['original_signal'] = sensor_data
     
-    # Optional: Visualize each filtered result
-    plt.figure(figsize=(16, 5))
-    plt.plot(data['time'], data[sensor_column], label ='original')
-    plt.plot(data['time'], filtered_df[sensor_column], color='g', label="filtered with Threshold = {}".format(threshold))
-    plt.title(f"Time-series signal with the filtering threshold")
-    plt.hlines(y=threshold, label='threshold = {}'.format(threshold), colors='r', linestyles='--', xmin=0, xmax=len(data))
-    plt.xlabel("Time")
-    plt.ylabel("Acceleration:")
-    plt.legend()
-    plt.grid()
-    plt.show()
+    # # Optional: Visualize each filtered result
+    # plt.figure(figsize=(16, 5))
+    # plt.plot(data['time'], data[sensor_column], label ='original')
+    # plt.plot(data['time'], filtered_df[sensor_column], color='g', label="filtered with Threshold = {}".format(threshold))
+    # plt.title(f"Time-series signal with the filtering threshold")
+    # plt.hlines(y=threshold, label='threshold = {}'.format(threshold), colors='r', linestyles='--', xmin=0, xmax=len(data))
+    # plt.xlabel("Time")
+    # plt.ylabel("Acceleration:")
+    # plt.legend()
+    # plt.grid()
+    # plt.show()
 
     # Calculate ratio of filtered data to original data
     signal_fil_ratio = len(filtered_indices) / len(data[sensor_column])
@@ -93,8 +96,9 @@ def printhist(df, sensor_column):
     plt.title(f'Histogram of {sensor_column}')
     plt.xlabel('Value')
     plt.ylabel('Count')
+    plt.tick_params('both')
     plt.grid(True, alpha=0.3)
-    plt.savefig('histogram.png')
+    plt.savefig(f'histogram_{sensor_column}.png')
 
 def RMSE_graph(rmse_df, sensor_column):
     fig, ax1 = plt.subplots(figsize=(10, 8))
@@ -104,12 +108,14 @@ def RMSE_graph(rmse_df, sensor_column):
     ax1.set_xlabel(f'Threshold: {sensor_column}')
     ax1.set_ylabel('RMSE')
     ax2.set_ylabel('signal_filtering_ratio')
+    ax1.set_xticks(rmse_df['threshold'])
+    ax1.set_yticks(rmse_df['RMSE'])
+    ax2.set_yticks(rmse_df['signal_ratio'])
     plt.grid()
     plt.title('threshold vs rmse vs signal_ratio')
-    plt.savefig('rmse_graph_pandas.png')
+    plt.savefig('rmse_graph.png')
     plt.show()
     
-
 def main():
     parser = argparse.ArgumentParser(description="Process parquet files, filter sensor data using chunk and threshold")
     parser.add_argument('--file_path', type=str, required=True, help="Path to parquet file to process")
