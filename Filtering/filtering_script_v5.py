@@ -1,15 +1,17 @@
 import argparse
 import numpy as np
 import pandas as pd
-from datetime import datetime
-import matplotlib.pyplot as plt, mpld3
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 import time
-import math
 
 def sensor_data_clip(path, sensor_column):
     # Load data from parquet file with specified columns
     col = [sensor_column, 'time']
-    df = pd.read_parquet(path, engine='pyarrow', columns=col)
+    if path.endswith('.csv'):
+        df = pd.read_csv(path)
+    if path.endswith('.parquet'):
+        df = pd.read_parquet(path, engine='pyarrow', columns=col)
     return df
 
 def filter_dc_by_mean(data, sensor_column):
@@ -52,17 +54,20 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df[sensor_column] = filtered_df[sensor_column].fillna(0)
     filtered_df['original_signal'] = sensor_data
     
-    # # Optional: Visualize each filtered result
-    # plt.figure(figsize=(16, 5))
-    # plt.plot(data['time'], data[sensor_column], label ='original')
-    # plt.plot(data['time'], filtered_df[sensor_column], color='g', label="filtered with Threshold = {}".format(threshold))
-    # plt.title(f"Time-series signal with the filtering threshold")
+    # Optional: Visualize each filtered result
+    plt.figure(figsize=(16, 5))
+    plt.plot(data['time'], data[sensor_column], color ='b', label ='original')
+    plt.plot(data['time'], filtered_df[sensor_column], color='g')
+    plt.title(f"Time-series signal with the filtering threshold")
     # plt.hlines(y=threshold, label='threshold = {}'.format(threshold), colors='r', linestyles='--', xmin=0, xmax=len(data))
-    # plt.xlabel("Time")
-    # plt.ylabel("Acceleration:")
-    # plt.legend()
-    # plt.grid()
-    # plt.show()
+    # plt.hlines(y= -threshold, colors='r', linestyles='--', xmin=0, xmax=len(data))
+    plt.xlabel("Time")
+    plt.ylabel("Acceleration:")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    plt.savefig('etfa_graph')
 
     # Calculate ratio of filtered data to original data
     signal_fil_ratio = len(filtered_indices) / len(data[sensor_column])
@@ -101,21 +106,34 @@ def printhist(df, sensor_column):
     plt.savefig(f'histogram_{sensor_column}.png')
 
 def RMSE_graph(rmse_df, sensor_column):
-    fig, ax1 = plt.subplots(figsize=(10, 8))
+
+    rmse_df['RMSE'] = rmse_df['RMSE'] * 1e3
+    fig, ax1 = plt.subplots(figsize=(12, 8))
     ax2 = ax1.twinx()
     ax1.plot(rmse_df['threshold'], rmse_df['RMSE'], marker='o', linestyle='-')
     ax2.plot(rmse_df['threshold'], rmse_df['signal_ratio'], marker='o', color='r')
-    ax1.set_xlabel(f'Threshold: {sensor_column}')
-    ax1.set_ylabel('RMSE')
-    ax2.set_ylabel('signal_filtering_ratio')
+    ax1.set_xlabel(f'Threshold: {sensor_column}', fontsize = 14)
+    ax1.set_ylabel('RMSE * 10^-3', fontsize = 14)
+    ax2.set_ylabel('signal_filtering_ratio', fontsize = 14)
     ax1.set_xticks(rmse_df['threshold'])
+    ax1.tick_params(axis='x', labelrotation=45)
     ax1.set_yticks(rmse_df['RMSE'])
     ax2.set_yticks(rmse_df['signal_ratio'])
-    plt.grid()
-    plt.title('threshold vs rmse vs signal_ratio')
-    plt.savefig('rmse_graph.png')
-    plt.show()
+    # Primary Y-axis (left)
+    ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # limit to 6 decimals
+    ax1.tick_params(axis='both', labelsize=14)  # font size
+
+    ax2.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # limit to 4 decimals
+    ax2.tick_params(axis='y', labelsize=14)
+    ax1.tick_params(axis='x', labelsize=14)
     
+    
+    #plt.rcParams.update({'font.size': 16})
+    plt.grid()
+    plt.savefig('rmse_graph_wip.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Process parquet files, filter sensor data using chunk and threshold")
     parser.add_argument('--file_path', type=str, required=True, help="Path to parquet file to process")
@@ -132,7 +150,7 @@ def main():
 
     # Load and preprocess data
     df = sensor_data_clip(path, sensor_column)
-    df_no_dc = filter_dc_by_mean(df[:10000], sensor_column)
+    df_no_dc = filter_dc_by_mean(df[343802:344802], sensor_column)
   
     RMSE_results = []
     signal_filtering_ratio = []
@@ -143,10 +161,10 @@ def main():
         rmse = rmse_cal(filtered_df, sensor_column)
         RMSE_results.append(rmse)
         signal_filtering_ratio.append(signal_fil_ratio)
-        print(f"Threshold: {threshold}, RMSE: {rmse:.6f}, signal_filtering_ratio: {signal_fil_ratio:.6f}")
+        #print(f"Threshold: {threshold}, RMSE: {rmse:.6f}, signal_filtering_ratio: {signal_fil_ratio:.6f}")
         
     # Generate histogram of original data
-    printhist(df_no_dc, sensor_column)
+    #printhist(df_no_dc, sensor_column)
 
     # Create summary dataframe and plot results
     rmse_df = pd.DataFrame({
@@ -155,10 +173,11 @@ def main():
         'signal_ratio': signal_filtering_ratio
     }, columns=['threshold', 'RMSE', 'signal_ratio'])
     
-    RMSE_graph(rmse_df, sensor_column)
+    #RMSE_graph(rmse_df, sensor_column)
 
 if __name__ == '__main__':
     start_time = time.time()
     main()
     end_time = time.time()
     print(f"Total execution time: {end_time - start_time:.2f} seconds")
+    
