@@ -163,10 +163,6 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
 
-
-
-
-
 def compare_sensors_statistics(df, sensor_columns, time_column):
     """Calculate and compare basic statistics for each sensor"""
     print("Calculating statistics for each sensor...")
@@ -353,6 +349,7 @@ def main():
     parser.add_argument('--start_time', type=str, required=True, help= 'starting time frame interedted in')
     parser.add_argument('--duration_mins', type=float, required=True, help = 'duration in mins of time frame interested')
 
+    #ex for script vibration_analysis.py --path path_to_folder --start_time  
     args = parser.parse_args()
     path = args.path # Path to your parquet file
     start_time = args.start_time 

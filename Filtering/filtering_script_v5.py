@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 import time
+import math
 
 def sensor_data_clip(path, sensor_column):
     # Load data from parquet file with specified columns
@@ -55,19 +56,19 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df['original_signal'] = sensor_data
     
     # Optional: Visualize each filtered result
-    plt.figure(figsize=(16, 5))
-    plt.plot(data['time'], data[sensor_column], color ='b', label ='original')
-    plt.plot(data['time'], filtered_df[sensor_column], color='g')
-    plt.title(f"Time-series signal with the filtering threshold")
-    # plt.hlines(y=threshold, label='threshold = {}'.format(threshold), colors='r', linestyles='--', xmin=0, xmax=len(data))
-    # plt.hlines(y= -threshold, colors='r', linestyles='--', xmin=0, xmax=len(data))
-    plt.xlabel("Time")
-    plt.ylabel("Acceleration:")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-    plt.savefig('etfa_graph')
+    # plt.figure(figsize=(16, 5))
+    # plt.plot(data['time'], data[sensor_column], color ='b', label ='original')
+    # plt.plot(data['time'], filtered_df[sensor_column], color='g')
+    # plt.title(f"Time-series signal with the filtering threshold")
+    # # plt.hlines(y=threshold, label='threshold = {}'.format(threshold), colors='r', linestyles='--', xmin=0, xmax=len(data))
+    # # plt.hlines(y= -threshold, colors='r', linestyles='--', xmin=0, xmax=len(data))
+    # plt.xlabel("Time")
+    # plt.ylabel("Acceleration:")
+    # plt.legend()
+    # plt.grid(True)
+    # plt.tight_layout()
+    # plt.show()
+    # plt.savefig('etfa_graph')
 
     # Calculate ratio of filtered data to original data
     signal_fil_ratio = len(filtered_indices) / len(data[sensor_column])
@@ -112,13 +113,14 @@ def RMSE_graph(rmse_df, sensor_column):
     ax2 = ax1.twinx()
     ax1.plot(rmse_df['threshold'], rmse_df['RMSE'], marker='o', linestyle='-')
     ax2.plot(rmse_df['threshold'], rmse_df['signal_ratio'], marker='o', color='r')
-    ax1.set_xlabel(f'Threshold: {sensor_column}', fontsize = 14)
+    ax1.set_xlabel(f'Threshold', fontsize = 14)
     ax1.set_ylabel('RMSE * 10^-3', fontsize = 14)
-    ax2.set_ylabel('signal_filtering_ratio', fontsize = 14)
+    ax2.set_ylabel('signal filtering ratio', fontsize = 14)
     ax1.set_xticks(rmse_df['threshold'])
     ax1.tick_params(axis='x', labelrotation=45)
     ax1.set_yticks(rmse_df['RMSE'])
     ax2.set_yticks(rmse_df['signal_ratio'])
+
     # Primary Y-axis (left)
     ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # limit to 6 decimals
     ax1.tick_params(axis='both', labelsize=14)  # font size
@@ -126,9 +128,10 @@ def RMSE_graph(rmse_df, sensor_column):
     ax2.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # limit to 4 decimals
     ax2.tick_params(axis='y', labelsize=14)
     ax1.tick_params(axis='x', labelsize=14)
-    
+    ax1.grid()
     
     #plt.rcParams.update({'font.size': 16})
+    
     plt.grid()
     plt.savefig('rmse_graph_wip.png', dpi=300, bbox_inches='tight')
     plt.show()
@@ -150,7 +153,7 @@ def main():
 
     # Load and preprocess data
     df = sensor_data_clip(path, sensor_column)
-    df_no_dc = filter_dc_by_mean(df[343802:344802], sensor_column)
+    df_no_dc = filter_dc_by_mean(df, sensor_column)
   
     RMSE_results = []
     signal_filtering_ratio = []
@@ -173,7 +176,7 @@ def main():
         'signal_ratio': signal_filtering_ratio
     }, columns=['threshold', 'RMSE', 'signal_ratio'])
     
-    #RMSE_graph(rmse_df, sensor_column)
+    RMSE_graph(rmse_df, sensor_column)
 
 if __name__ == '__main__':
     start_time = time.time()
