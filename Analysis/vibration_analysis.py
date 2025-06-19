@@ -83,12 +83,12 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
 
     print("\nProcessed Data (First 5 Rows):")
     
-    #print(result_df.head(1))
+    print(result_df.head(1))
 
     return result_df
 
 def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_mins):
-    print(f"Visualizing all sensors with sample interval from {start_time} to {duration_mins} mins...")
+    print(f"Visualizing sensors in one campate with sample interval from {start_time} to {duration_mins} mins...")
     memory_usage()
 
     # Select only necessary columns and sample at specified interval
@@ -104,24 +104,28 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
 
     #PLOT ONLY duration we want to analyse 
     start_time = pd.to_datetime(start_time)
+    print('cehck:', start_time)
     end_time = start_time + pd.Timedelta(minutes=duration_mins)
+
     #limit to the specific time frame
     sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
+    print(sampled_df.head())
 
-    # # Create figure
-    # plt.figure(figsize=(16, 9))
-    # # Plot each sensor
-    # for sensor in sensor_columns:
-    #     plt.plot(sampled_df[time_column], sampled_df[sensor], label=sensor, linewidth=1, alpha=0.7)
-    # # Format the plot
-    # plt.title('Acceleration Data from Multiple Sensors')
-    # plt.xlabel('Time')
-    # plt.ylabel('Acceleration')
-    # plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
-    # plt.grid(True, alpha=0.3)
-    # plt.tight_layout()
-    # #plt.savefig('capmate_1a_sensor_vibrations.svg', format= 'svg')
-    # plt.show()
+    #if plot == 0:
+    # Create figure
+    plt.figure(figsize=(16, 9))
+    # Plot each sensor
+    for sensor in sensor_columns:
+        plt.plot(sampled_df[time_column], sampled_df[sensor], label=sensor, linewidth=1, alpha=0.7)
+    # Format the plot
+    plt.title('Acceleration Data from Multiple Sensors')
+    plt.xlabel('Time')
+    plt.ylabel('Acceleration')
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    #plt.savefig('capmate_1a_sensor_vibrations.svg', format= 'svg')
+    plt.show()
     
     fig = go.Figure()
 
@@ -163,100 +167,6 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
 
-def compare_sensors_statistics(df, sensor_columns, time_column):
-    """Calculate and compare basic statistics for each sensor"""
-    print("Calculating statistics for each sensor...")
-    memory_usage()
-    
-    # Calculate statistics for each sensor
-    # stats = df.select([
-    #     pl.col(col).mean().alias(f"{col}_mean"),
-    #     pl.col(col).std().alias(f"{col}_std"),
-    #     pl.col(col).min().alias(f"{col}_min"),
-    #     pl.col(col).max().alias(f"{col}_max"),
-    #     (pl.col(col).max() - pl.col(col).min()).alias(f"{col}_range")
-    # ] for col in sensor_columns).collect()
-    
-    stats_expressions = []
-    for col in sensor_columns:
-        stats_expressions.extend([
-            pl.col(col).mean().alias(f"{col}_mean"),
-            pl.col(col).std().alias(f"{col}_std"),
-            pl.col(col).min().alias(f"{col}_min"),
-            pl.col(col).max().alias(f"{col}_max"),
-            (pl.col(col).max() - pl.col(col).min()).alias(f"{col}_range")
-        ])
-
-    # Select using unpacking
-    stats = df.select(*stats_expressions).collect()
-
-    # Convert to a more readable format
-    stats_dict = {
-        "Sensor": [],
-        "Mean": [],
-        "Std Dev": [],
-        "Min": [],
-        "Max": [],
-        "Range": []
-    }
-    
-    for col in sensor_columns:
-        stats_dict["Sensor"].append(col)
-        stats_dict["Mean"].append(stats[f"{col}_mean"][0])    # Extracting first row value
-        stats_dict["Std Dev"].append(stats[f"{col}_std"][0])
-        stats_dict["Min"].append(stats[f"{col}_min"][0])
-        stats_dict["Max"].append(stats[f"{col}_max"][0])
-        stats_dict["Range"].append(stats[f"{col}_range"][0])
-    
-    stats_df = pd.DataFrame(stats_dict)
-    print("\nSensor Statistics:")
-    print(stats_df.head())
-    memory_usage()
-    
-    # Visualize sensor statistics
-    plt.figure(figsize=(14, 10))
-    
-    # Plot mean values
-    plt.subplot(2, 2, 1)
-    plt.bar(stats_df["Sensor"], stats_df["Mean"])
-    plt.title("Mean Acceleration by Sensor")
-    plt.ylabel("Mean Value")
-    plt.xticks(rotation=90)
-    
-    # Plot standard deviation
-    plt.subplot(2, 2, 2)
-    plt.bar(stats_df["Sensor"], stats_df["Std Dev"])
-    plt.title("Standard Deviation by Sensor")
-    plt.ylabel("Std Dev")
-    plt.xticks(rotation=90)
-    
-    # Plot ranges
-    plt.subplot(2, 2, 3)
-    plt.bar(stats_df["Sensor"], stats_df["Range"])
-    plt.title("Range (Max-Min) by Sensor")
-    plt.ylabel("Range")
-    plt.xticks(rotation=90)
-    
-    # Plot min and max together
-    plt.subplot(2, 2, 4)
-    x = np.arange(len(stats_df["Sensor"]))
-    width = 0.35
-    plt.bar(x - width/2, stats_df["Min"], width, label="Min")
-    plt.bar(x + width/2, stats_df["Max"], width, label="Max")
-    plt.title("Min and Max Acceleration by Sensor")
-    plt.ylabel("Value")
-    plt.xticks(x, stats_df["Sensor"], rotation=90)
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig('sensor_statistics.png', dpi=300)
-    #plt.show()
-    plt.close()
-    
-    print("Sensor statistics visualization saved to sensor_statistics.png")
-    memory_usage()
-    
-    return stats_df
 
 def visualize_sensor_histograms(df, sensor_columns, bins=50):
     """Create histograms for each sensor to analyze distribution"""
@@ -349,7 +259,7 @@ def main():
     parser.add_argument('--start_time', type=str, required=True, help= 'starting time frame interedted in')
     parser.add_argument('--duration_mins', type=float, required=True, help = 'duration in mins of time frame interested')
 
-    #ex for script vibration_analysis.py --path path_to_folder --start_time  
+    #ex for script RUNNING: python3 vibration_analysis.py --path  --start_time --duration_mins
     args = parser.parse_args()
     path = args.path # Path to your parquet file
     start_time = args.start_time 
@@ -375,3 +285,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+    #instructions to run this parametric scripts:
+    #check wether the parameters correctly matching the format(for ex: the date and month should be interchanegd from the format of weighing data)  
+    # python3 vibration_analysis.py --path /Users/thomas/Data/ --start_time '2025/03/07 01:05:00' --duration_mins 25 
