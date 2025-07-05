@@ -60,7 +60,7 @@ def load_data_polars(filepath):
     #sensors in order 53->52->51
     campate1b_sensor_columns = ['0309100F_x', '030910F6_x', '0309101E_x']
     #sensors in order 106->105->104
-    campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x'] 
+    campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '03091207_x', '03091119_z'] 
     sensor_columns = [col for col in campate1a_sensor_columns if col in df.columns]
     #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
     memory_usage()
@@ -113,19 +113,19 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
 
     #if plot == 0:
     # Create figure
-    plt.figure(figsize=(16, 9))
-    # Plot each sensor
-    for sensor in sensor_columns:
-        plt.plot(sampled_df[time_column], sampled_df[sensor], label=sensor, linewidth=1, alpha=0.7)
-    # Format the plot
-    plt.title('Acceleration Data from Multiple Sensors')
-    plt.xlabel('Time')
-    plt.ylabel('Acceleration')
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    #plt.savefig('capmate_1a_sensor_vibrations.svg', format= 'svg')
-    plt.show()
+    # plt.figure(figsize=(16, 9))
+    # # Plot each sensor
+    # for sensor in sensor_columns:
+    #     plt.plot(sampled_df[time_column], sampled_df[sensor], label=sensor, linewidth=1, alpha=0.7)
+    # # Format the plot
+    # plt.title('Acceleration Data from Multiple Sensors')
+    # plt.xlabel('Time')
+    # plt.ylabel('Acceleration')
+    # plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+    # plt.grid(True, alpha=0.3)
+    # plt.tight_layout()
+    # #plt.savefig('capmate_1a_sensor_vibrations.svg', format= 'svg')
+    # plt.show()
     
     fig = go.Figure()
 
@@ -153,7 +153,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
             yanchor='top',  # Align the top of the legend
             orientation='h',  # Horizontal orientation
             traceorder='normal',  # Order in which the traces are displayed
-            font=dict(size=12)  # Font size for legend
+            font=dict(size=16)  # Font size for legend
         ),
         #template='plotly_dark',  # Optional: dark template for styling
         showlegend=True,  # Show the legend
