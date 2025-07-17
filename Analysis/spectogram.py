@@ -47,12 +47,12 @@ def fft_spectrum(df, sensor_column):
     plt.plot(freqs, np.abs(fft_0), label='FFT Sample 0')
     plt.xlabel('Frequency')
     plt.ylabel('Magnitude')
-    plt.title('FFT of Last Two Samples')
+    plt.title('FFT of clipped data frame')
     plt.legend()
     plt.tight_layout()
     plt.show()
 
-### ex to run the script python3 spectogram.py 
+### ex to run the script python3 spectogram.py --path /Users/thomas/Data/20250212/csv_acc/M001_2025-02-12_02-00-00_gg-87_int-3_th.csv --sensor 030911EF_x
 def main():
     parser = argparse.ArgumentParser(description="create a spectogram, using sensor data using for specific columns")
     parser.add_argument('--path', type=str, required=True, help="Path to file")
