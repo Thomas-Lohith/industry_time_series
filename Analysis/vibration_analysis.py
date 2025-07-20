@@ -9,6 +9,7 @@ import os
 from scipy.signal import find_peaks
 import argparse
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 def memory_usage():
     """Print current memory usage"""
@@ -61,7 +62,9 @@ def load_data_polars(filepath):
     campate1b_sensor_columns = ['0309100F_x', '030910F6_x', '0309101E_x']
     #sensors in order 106->105->104
     campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '03091207_x', '03091119_z'] 
-    sensor_columns = [col for col in campate1a_sensor_columns if col in df.columns]
+    #sensor column on whole brideg
+    all_campate_sensor_columns = ['030911FF_x', '03091017_z', '03091113_x', '0309123B_z', '03091111_z', '03091003_x'] 
+    sensor_columns = [col for col in all_campate_sensor_columns if col in df.columns]
     #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
     memory_usage()
     return df, sensor_columns, time_column
@@ -100,16 +103,16 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     memory_usage()
     
     sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
-    #print(sampled_df.head())
+    print(sampled_df.head())
 
     #PLOT ONLY duration we want to analyse 
     start_time = pd.to_datetime(start_time)
-    print('cehck:', start_time)
+    print('check:', start_time)
     end_time = start_time + pd.Timedelta(minutes=duration_mins)
 
     #limit to the specific time frame
     sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
-    print(sampled_df.head())
+    print('limited time frame dataframe', sampled_df.head())
 
     #if plot == 0:
     # Create figure
@@ -128,38 +131,46 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     # plt.show()
     
     fig = go.Figure()
+   # Choose the sensors you want to plot
+    sensor_list = sensor_columns[:6] # Adjust the number as needed
 
-    # Loop over each sensor and add a trace to the figure
-    for sensor in sensor_columns:
-        fig.add_trace(go.Scatter(
-            x=sampled_df[time_column],  # Time data for the x-axis
-            y=sampled_df[sensor],  # Sensor data for the y-axis
-            mode='lines',  # Line plot
-            name=sensor,  # Label the trace with the sensor name
-            line=dict(width=1),  # Line width
-            opacity=0.7  # Line transparency
-        ))
+    # Create subplot structure: 2 rows, 3 columns for 6 sensors
+    n = len(sensor_list)
+    cols = 3
+    rows = -(-n // cols)
 
-    # Update layout for the plot
-    fig.update_layout(
-        title='Acceleration Data from Sensors in campate_1a',  # Title of the plot
-        xaxis_title='Time',  # Label for the X-axis
-        yaxis_title='Acceleration',  # Label for the Y-axis
-        legend_title='Sensors',  # Title for the legend
-        legend=dict(
-            x=0.5,  # Position of the legend
-            y=-0.15,  # Below the plot
-            xanchor='center',  # Center the legend horizontally
-            yanchor='top',  # Align the top of the legend
-            orientation='h',  # Horizontal orientation
-            traceorder='normal',  # Order in which the traces are displayed
-            font=dict(size=16)  # Font size for legend
-        ),
-        #template='plotly_dark',  # Optional: dark template for styling
-        showlegend=True,  # Show the legend
-        hovermode='closest',  # Show closest data point on hover
-        margin=dict(b=60),  # Adjust the bottom margin to fit legend
+    fig = make_subplots(
+        rows=rows,
+        cols=cols,
+        subplot_titles=sensor_list  # Use sensor names as titles
     )
+
+    # Loop and add each sensor's trace to the appropriate subplot
+    for i, sensor in enumerate(sensor_list):
+        row = (i // cols) + 1
+        col = (i % cols) + 1
+        
+        
+        fig.add_trace(
+            go.Scatter(
+                x=sampled_df[time_column],
+                y=sampled_df[sensor],
+                mode='lines',
+                name=sensor,
+                line=dict(width=1),
+                opacity=0.8
+            ),
+            row=row,
+            col=col
+        )
+
+    # Update layout
+    fig.update_layout(
+       
+        title_text="Sensor Vibration Plots (Vertical Direction)",
+        showlegend=False
+    )
+
 
     # Display the plot
     fig.show()
@@ -198,60 +209,7 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     print("Sensor histograms saved to sensor_histograms.png")
     memory_usage()
 
-def count_signal_peaks(df: pl.DataFrame, sensor_column: str, height_threshold: float = None, distance: int = None) -> tuple[int, np.ndarray]:
 
-    # Convert the sensor data to numpy array
-    signal = df.select(pl.col(sensor_column)).collect().to_numpy().flatten()
-    
-    # If height threshold is not provided, use 2 standard deviations
-    if height_threshold is None:
-        height_threshold = 2 * np.std(signal)
-    
-    # If distance is not provided, use 1% of the signal length
-    if distance is None:
-        distance = len(signal) // 5000
-    
-    # Find peaks
-    peaks, _ = find_peaks(signal, height=height_threshold, distance=distance)
-    
-    return len(peaks), peaks
-
-def visualize_peaks(df: pl.DataFrame, sensor_column: str, time_column: str, sample_interval: int = 36000):
-        # Get peak information
-    num_peaks, peak_indices = count_signal_peaks(df, sensor_column)
-    print(f"Found {num_peaks} peaks in {sensor_column}")
-    
-    # Sample the data and covert it to pandas df for visualization 
-    sampled_df = (df.select([time_column, sensor_column])
-                 .slice(0, sample_interval)
-                 .collect()
-                 .to_pandas())
-    
-    # Convert timestamp to datetime
-    sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
-    
-    # Create the plot
-    plt.figure(figsize=(16, 9))
-    plt.plot(sampled_df[time_column], sampled_df[sensor_column], label='Signal', alpha=0.7)
-    
-    # Plot peaks
-    peak_times = sampled_df[time_column].iloc[peak_indices[peak_indices < sample_interval]]
-    peak_values = sampled_df[sensor_column].iloc[peak_indices[peak_indices < sample_interval]]
-    plt.scatter(peak_times, peak_values, color='red', label='Peaks', zorder=5)
-    
-    plt.title(f'Signal Peaks for {sensor_column}')
-    plt.xlabel('Time')
-    plt.ylabel('Acceleration')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
-    
-    # Save the plot
-    #plt.savefig(f'peaks_{sensor_column}.png', dpi=300)
-    #plt.close()
-    
-    print(f"Peak visualization saved to peaks_{sensor_column}.png")
 
 def main():
     parser = argparse.ArgumentParser('Analyse the vibration realting the dyanmic weighing data')
@@ -274,12 +232,7 @@ def main():
     # visualise each sensor in campate for a sample interval
     visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
     
-    # Count and visualize peaks for each sensor
-    # for sensor in sensor_columns:
-    #     num_peaks, _ = count_signal_peaks(no_dc_df, sensor)
-    #     print(f"Number of peaks in {sensor}: {num_peaks}")
-    #     visualize_peaks(no_dc_df, sensor, time_column, sample_interval=6000)
-    
+   
     print("Analysis complete!")
     memory_usage()
 
@@ -291,4 +244,4 @@ if __name__ == "__main__":
 
     #instructions to run this parametric scripts:
     #check wether the parameters correctly matching the format(for ex: the date and month should be interchanegd from the format of weighing data)  
-    # python3 vibration_analysis.py --path /Users/thomas/Data/ --start_time '2025/03/07 01:05:00' --duration_mins 25 
+    # python3 vibration_analysis.py --path /Users/thomas/Data/20250307/M001_2025-03-07_00-00-00_gg-112_int-1_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 10
