@@ -25,14 +25,14 @@ def filter_dc_by_mean(df, sensor_column):
 def spectogram(df, sensor_column):
     
     x = df[f'{sensor_column}']
-    
+
     Fs = 100
-    f, t, Sxx = signal.spectrogram(x, Fs, window=signal.get_window('hamming', 256), nperseg=256, noverlap=128)
+    f, t, Sxx = signal.spectrogram(x, Fs, window=signal.get_window('hamming', 256), nperseg=256, noverlap=64)
     plt.figure(figsize=(15,8))
     plt.pcolormesh(t, f, Sxx, shading='gouraud')
     plt.ylabel('Frequency [Hz]')
     plt.xlabel('Time [sec]')
-    #plt.ylim([0, 50])
+    plt.ylim([0, 50])
     plt.colorbar()
     plt.show()
 
@@ -41,16 +41,18 @@ def spectogram(df, sensor_column):
 def fft_spectrum(df, sensor_column):
     signal= df[f'{sensor_column}']
     # Compute the FFT for the first two samples
-    fft_0 = np.fft.rfft(signal)
+    fft = np.fft.rfft(signal)
     freqs = np.fft.rfftfreq(len(signal), d=1)
     plt.figure(figsize=(14, 4))
-    plt.plot(freqs, np.abs(fft_0), label='FFT Sample 0')
+    plt.plot(freqs, fft, label='FFT')
     plt.xlabel('Frequency')
     plt.ylabel('Magnitude')
     plt.title('FFT of clipped data frame')
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+
 
 ### ex to run the script python3 spectogram.py --path /Users/thomas/Data/20250212/csv_acc/M001_2025-02-12_02-00-00_gg-87_int-3_th.csv --sensor 030911EF_x
 def main():
@@ -66,9 +68,9 @@ def main():
 
     df = filter_dc_by_mean(df, sensor_column)
 
-    spectogram(df[:200000], sensor_column)
+    spectogram(df[9000:11000], sensor_column)
 
-    fft_spectrum(df[:200000], sensor_column)
+    fft_spectrum(df[9000:11000], sensor_column)
     
 if __name__ == "__main__":
     main()

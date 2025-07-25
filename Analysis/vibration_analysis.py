@@ -1,15 +1,15 @@
 import pandas as pd
 import polars as pl
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import numpy as np
 from datetime import datetime
 import psutil
 import os
-from scipy.signal import find_peaks
+from scipy import signal
 import argparse
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
 
 def memory_usage():
     """Print current memory usage"""
@@ -129,55 +129,120 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     # plt.tight_layout()
     # #plt.savefig('capmate_1a_sensor_vibrations.svg', format= 'svg')
     # plt.show()
-    
-    fig = go.Figure()
-   # Choose the sensors you want to plot
-    sensor_list = sensor_columns[:6] # Adjust the number as needed
 
-    # Create subplot structure: 2 rows, 3 columns for 6 sensors
+    # Choose the sensors you want to plot with matplolib
+    sensor_list = sensor_columns[:6]  # or list(vertical_columns.values())[:6]
     n = len(sensor_list)
     cols = 3
     rows = -(-n // cols)
 
-    fig = make_subplots(
-        rows=rows,
-        cols=cols,
-        subplot_titles=sensor_list  # Use sensor names as titles
-    )
+    fig, axes = plt.subplots(rows, cols, figsize=(15, 8), sharex=True)
+    axes = axes.flatten()
 
-    # Loop and add each sensor's trace to the appropriate subplot
     for i, sensor in enumerate(sensor_list):
-        row = (i // cols) + 1
-        col = (i % cols) + 1
+        ax = axes[i]
+        ax.plot(sampled_df[time_column], sampled_df[sensor], linewidth=1)
+        ax.set_title(sensor, fontsize=10)
+        ax.tick_params(axis='x', labelrotation=45)
+
+    # Remove empty subplots if any
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    fig.suptitle("Sensor Vibration Plots (Vertical Direction)", fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for suptitle
+
+    plt.show()
+
+    # Save to file
+    fig.savefig(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/events_with_less_trafic/vibration_data_{start_time}.png', dpi=300)
         
+#     fig = go.Figure()
+#    # Choose the sensors you want to plot
+#     sensor_list = sensor_columns[:6] # Adjust the number as needed
+
+#     # Create subplot structure: 2 rows, 3 columns for 6 sensors
+#     n = len(sensor_list)
+#     cols = 3
+#     rows = -(-n // cols)
+
+#     fig = make_subplots(
+#         rows=rows,
+#         cols=cols,
+#         subplot_titles=sensor_list  # Use sensor names as titles
+#     )
+#     # Loop and add each sensor's trace to the appropriate subplot
+#     for i, sensor in enumerate(sensor_list):
+#         row = (i // cols) + 1
+#         col = (i % cols) + 1
         
-        fig.add_trace(
-            go.Scatter(
-                x=sampled_df[time_column],
-                y=sampled_df[sensor],
-                mode='lines',
-                name=sensor,
-                line=dict(width=1),
-                opacity=0.8
-            ),
-            row=row,
-            col=col
-        )
+#         fig.add_trace(
+#             go.Scatter(
+#                 x=sampled_df[time_column],
+#                 y=sampled_df[sensor],
+#                 mode='lines',
+#                 name=sensor,
+#                 line=dict(width=1),
+#                 opacity=0.8
+#             ),
+#             row=row,
+#             col=col
+#         )
 
-    # Update layout
-    fig.update_layout(
-       
-        title_text="Sensor Vibration Plots (Vertical Direction)",
-        showlegend=False
-    )
-
-
-    # Display the plot
-    fig.show()
-    fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/events_with_less_trafic/vibration_data_{start_time}.html')
-    print("All sensors visualization saved to all_sensors_acceleration.png")
+#     # Update layout
+#     fig.update_layout(
+#         title_text="Sensor Vibration Plots (Vertical Direction)",
+#         showlegend=False
+#     )
+#     # Display the plot
+#     fig.show()
+#     fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/events_with_less_trafic/vibration_data_{start_time}.html')
+#     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
+    return sampled_df
 
+
+def multi_sensor_spectrogram(df, sensor_columns, cols=3):
+    """
+    Plot spectrograms for multiple sensors in subplots.
+
+    Parameters:
+    - df: DataFrame containing the sensor data.
+    - sensor_list: List of column names (sensors) to plot.
+    - cols: Number of columns for subplot layout.
+    """
+    sensor_list = sensor_columns[:6]
+    n = len(sensor_list)
+    rows = -(-n // cols)  # Ceiling division
+
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows), sharex=False)
+    axes = axes.flatten()
+
+    for i, sensor_column in enumerate(sensor_list):
+        x = df[sensor_column].values
+        f, t, Sxx = signal.spectrogram(
+            x,
+            fs= 100, #sampling_rate,
+            window=signal.get_window('hamming', 256),
+            nperseg=256,
+            noverlap=64
+        )
+        
+        ax = axes[i]
+        pcm = ax.pcolormesh(t, f, Sxx, shading='gouraud', cmap='viridis')
+        ax.set_title(sensor_column, fontsize=10)
+        ax.set_ylabel('Freq [Hz]')
+        ax.set_xlabel('Time [sec]')
+        ax.set_ylim([0, 50])
+        fig.colorbar(pcm, ax=ax)
+
+    # Remove unused axes if sensor count is not a perfect multiple of cols
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    fig.suptitle('Spectrograms of Selected Sensors', fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
 
 def visualize_sensor_histograms(df, sensor_columns, bins=50):
     """Create histograms for each sensor to analyze distribution"""
@@ -230,8 +295,9 @@ def main():
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
 
     # visualise each sensor in campate for a sample interval
-    visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
+    sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
     
+    multi_sensor_spectrogram(sampled_df, sensor_columns, cols=3)
    
     print("Analysis complete!")
     memory_usage()
