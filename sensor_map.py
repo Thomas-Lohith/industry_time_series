@@ -1,6 +1,7 @@
 # Combined sensor dictionary with all three directions
 # Format: "AICD XXX": (vertical, flexural, torsional)
 
+#aicd can be prefixed for all the items as it is common to all the sensors 
 sensor_dict_combined = {
     "AICD 001": ("03091011_x", "03091011_y", "03091011_z"),
     "AICD 002": ("030911F1_x", "030911F1_y", "030911F1_z"),

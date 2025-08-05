@@ -201,7 +201,6 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     memory_usage()
     return sampled_df
 
-
 def multi_sensor_spectrogram(df, sensor_columns, cols=3):
     """
     Plot spectrograms for multiple sensors in subplots.
@@ -310,4 +309,4 @@ if __name__ == "__main__":
 
     #instructions to run this parametric scripts:
     #check wether the parameters correctly matching the format(for ex: the date and month should be interchanegd from the format of weighing data)  
-    # python3 vibration_analysis.py --path /Users/thomas/Data/20250307/M001_2025-03-07_00-00-00_gg-112_int-1_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 10
+    # python3 vibration_analysis.py --path /Users/thomas/Data/20250307/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 5
