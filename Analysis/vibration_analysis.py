@@ -84,9 +84,8 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
                 (pl.col(col) - col_mean).alias(col)
             )
 
-    print("\nProcessed Data (First 5 Rows):")
-    
-    print(result_df.head(1))
+    # print("\nProcessed Data (First 5 Rows):")
+    # print(result_df.head())
 
     return result_df
 
@@ -103,7 +102,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     memory_usage()
     
     sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
-    print(sampled_df.head())
+    print('chek the date format:', sampled_df.head(1))
 
     #PLOT ONLY duration we want to analyse 
     start_time = pd.to_datetime(start_time)
@@ -112,24 +111,11 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
 
     #limit to the specific time frame
     sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
-    print('limited time frame dataframe', sampled_df.head())
+    print('intereseted time dataframe-start', sampled_df.head(1))
+    print('limited time frame dataframe-end', sampled_df.tail(1))
 
-    #if plot == 0:
-    # Create figure
-    # plt.figure(figsize=(16, 9))
-    # # Plot each sensor
-    # for sensor in sensor_columns:
-    #     plt.plot(sampled_df[time_column], sampled_df[sensor], label=sensor, linewidth=1, alpha=0.7)
-    # # Format the plot
-    # plt.title('Acceleration Data from Multiple Sensors')
-    # plt.xlabel('Time')
-    # plt.ylabel('Acceleration')
-    # plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
-    # plt.grid(True, alpha=0.3)
-    # plt.tight_layout()
-    # #plt.savefig('capmate_1a_sensor_vibrations.svg', format= 'svg')
-    # plt.show()
 
+ 
     # Choose the sensors you want to plot with matplolib
     sensor_list = sensor_columns[:6]  # or list(vertical_columns.values())[:6]
     n = len(sensor_list)
@@ -151,7 +137,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
 
     fig.suptitle("Sensor Vibration Plots (Vertical Direction)", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for suptitle
-
+    plt.savefig('graphs/subplots.png')
     plt.show()
 
     # Save to file
@@ -226,14 +212,15 @@ def multi_sensor_spectrogram(df, sensor_columns, cols=3):
             nperseg=256,
             noverlap=64
         )
-        
+        # Convert power to decibels (dB)
+        Sxx_dB = 10 * np.log10(Sxx + 1e-10)   # add epsilon to avoid log(0)
         ax = axes[i]
-        pcm = ax.pcolormesh(t, f, Sxx, shading='gouraud', cmap='viridis')
+        pcm = ax.pcolormesh(t, f, Sxx_dB, shading='gouraud', cmap='viridis')
         ax.set_title(sensor_column, fontsize=10)
         ax.set_ylabel('Freq [Hz]')
         ax.set_xlabel('Time [sec]')
         ax.set_ylim([0, 50])
-        fig.colorbar(pcm, ax=ax)
+        fig.colorbar(pcm, ax=ax, label='Power [dB]')
 
     # Remove unused axes if sensor count is not a perfect multiple of cols
     for j in range(i + 1, len(axes)):
@@ -241,6 +228,10 @@ def multi_sensor_spectrogram(df, sensor_columns, cols=3):
 
     fig.suptitle('Spectrograms of Selected Sensors', fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
+    start_time = df["time"].iloc[0]
+    end_time = df["time"].iloc[-1]
+    plt.suptitle(f"Spectrogram of {sensor_column}\nStart: {start_time} | End: {end_time}")
+    plt.savefig('graphs/multisensor_spectogram.png')
     plt.show()
 
 def visualize_sensor_histograms(df, sensor_columns, bins=50):
@@ -253,14 +244,10 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     
     # Create figure
     plt.figure(figsize=(16, 16))
-    # Sample data for histogram using filter instead of sample
-    # For lazy frames, we need to use a different approach than sample()
-    n = 100  # Take every nth row
-    sampled_df = df.select(sensor_columns).filter(pl.arange(0, pl.len()).mod(n) == 0).collect() 
-    # Plot histogram for each sensor
+
     for i, sensor in enumerate(sensor_columns, 1):
         plt.subplot(grid_size, grid_size, i)
-        plt.hist(sampled_df[sensor], bins=bins, alpha=0.7)
+        plt.hist(df[sensor], bins=bins, alpha=0.7)
         plt.title(sensor)
         plt.ylabel('Frequency')
         plt.grid(True, alpha=0.3)
@@ -297,6 +284,8 @@ def main():
     sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
     
     multi_sensor_spectrogram(sampled_df, sensor_columns, cols=3)
+
+    #visualize_sensor_histograms(sampled_df, sensor_columns, bins=50)
    
     print("Analysis complete!")
     memory_usage()
