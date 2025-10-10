@@ -44,7 +44,7 @@ def spectogram(df, sensor_column):
     start_time = df["time"].iloc[0]
     end_time = df["time"].iloc[-1]
     plt.suptitle(f"Spectrogram of {sensor_column}\nStart: {start_time} | End: {end_time}")
-    plt.savefig("spectrogram.png", dpi=300, bbox_inches="tight")
+    plt.savefig("graphs/spectrogram.png", dpi=300, bbox_inches="tight")
     plt.title(f"Spectrogram of {sensor_column}")
     plt.show()
 
@@ -68,24 +68,42 @@ def fft_spectrum(df, sensor_column):
     plt.title(f'FFT Spectrum of {sensor_column}')
     plt.legend()
     plt.tight_layout()
-    plt.savefig('fft_spectrum.png')
+    plt.savefig('graphs/fft_spectrum.png')
     plt.show()
 
 
 def power_spectrum(df, sensor_column):
+    #fs-frequency bins, pxx_den -power at each frequency  with the unit of v2/hz
     x = df[f'{sensor_column}']
     fs = 100
 
-    f, Pxx_den = signal.welch(x, fs, nperseg=256)
-    plt.semilogy(f, Pxx_den)
-    #plt.ylim([0.5e-3, 1])
+    # Welch method for PSD estimation (more averaging = smoother)
+    f, Pxx = signal.welch(
+        x, 
+        fs=fs, 
+        nperseg=256,
+        scaling= 'density'       # use ~10 sec window for good averaging      # 50% overlap    # gives units of V²/Hz (PSD)
+    )
+
+    # Convert to micro units if needed (optional)
+    Pxx = Pxx * 1e6
+
+    # Focus on the most informative frequency range (0–7 Hz)
+    freq_limit = 50
+    mask = f <= freq_limit
+    f, Pxx = f[mask], Pxx[mask]
+    plt.semilogy(f, Pxx)
+    plt.title(f"Power Spectrum Density - {sensor_column}")
     plt.xlabel('frequency [Hz]')
-    plt.ylabel('PSD [V**2/Hz]')
-    plt.savefig('power_spectrum.png')
+    plt.ylabel('PSD * 1e6 [V**2/Hz]') # 'y-PSD' should be scaled to *10e-6 
+    #plt.legend()
+    #plt.grid(True, ls='--', alpha=0.6)
+    plt.tight_layout()
+    plt.savefig('graphs/power_spectrum.png')
     plt.show()
 
 
-### ex to run the script python3 spectogram.py --path /Users/thomas/Data/20250212/csv_acc/M001_2025-02-12_02-00-00_gg-87_int-3_th.csv --sensor 030911EF_x
+### ex to run the script--->  python3 spectogram.py --path /Users/thomas/Data/Data_sensors/20250303/M001_2025-03-03_00-00-00_gg-108_int-1_th.csv --sensor 030911EF_x                               
 def main():
     parser = argparse.ArgumentParser(description="create a spectogram, using sensor data using for specific columns")
     parser.add_argument('--path', type=str, required=True, help="Path to file")
