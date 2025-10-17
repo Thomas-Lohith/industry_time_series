@@ -10,7 +10,6 @@ import argparse
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-
 def memory_usage():
     """Print current memory usage"""
     process = psutil.Process(os.getpid())
@@ -102,17 +101,17 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     memory_usage()
     
     sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
-    print('chek the date format:', sampled_df.head(1))
+    #print('chek the date format:', sampled_df.head(1))
 
     #PLOT ONLY duration we want to analyse 
     start_time = pd.to_datetime(start_time)
-    print('check:', start_time)
+    #print('check:', start_time)
     end_time = start_time + pd.Timedelta(minutes=duration_mins)
 
     #limit to the specific time frame
     sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
-    print('intereseted time dataframe-start', sampled_df.head(1))
-    print('limited time frame dataframe-end', sampled_df.tail(1))
+    #print('intereseted time dataframe-start', sampled_df.head(1))
+    #print('limited time frame dataframe-end', sampled_df.tail(1))
 
 
  
@@ -260,8 +259,6 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     print("Sensor histograms saved to sensor_histograms.png")
     memory_usage()
 
-
-
 def main():
     parser = argparse.ArgumentParser('Analyse the vibration realting the dyanmic weighing data')
     parser.add_argument('--path', type = str, required=True, help= 'path for the file')
@@ -292,10 +289,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
     #instructions to run this parametric scripts:
     #check wether the parameters correctly matching the format(for ex: the date and month should be interchanegd from the format of weighing data)  
-    # python3 vibration_analysis.py --path /Users/thomas/Data/20250307/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 5
+    # python3 vibration_analysis.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 5

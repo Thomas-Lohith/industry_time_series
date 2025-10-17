@@ -4,6 +4,7 @@ import numpy as np
 from scipy import signal
 import argparse
 import matplotlib.pyplot as plt
+from matplotlib import cm
 
 def sensor_data(path, sensor_column):
     # Load data from parquet file with specified columns
@@ -28,8 +29,8 @@ def spectogram(df, sensor_column):
 
     Fs = 100
     f, t, Sxx = signal.spectrogram(
-        x, Fs, window=signal.get_window("hamming", 256), 
-        nperseg=256, noverlap=64
+        x, Fs, window=signal.get_window("hamming", 2048), 
+        nperseg=2048
     )
     # Convert power to decibels (dB)
     Sxx_dB = 10 * np.log10(Sxx + 1e-10)   # add epsilon to avoid log(0)
@@ -44,11 +45,98 @@ def spectogram(df, sensor_column):
     start_time = df["time"].iloc[0]
     end_time = df["time"].iloc[-1]
     plt.suptitle(f"Spectrogram of {sensor_column}\nStart: {start_time} | End: {end_time}")
-    plt.savefig("graphs/spectrogram.png", dpi=300, bbox_inches="tight")
     plt.title(f"Spectrogram of {sensor_column}")
+    plt.savefig("graphs/spectrogram.png", dpi=300, bbox_inches="tight")
     plt.show()
 
+def spectrogram_3d_wireframe(df, sensor_column):
+    """
+    Generates a wireframe 3D spectrogram emphasizing structural frequency modes.
+    """
+    x = df[f'{sensor_column}']
+    Fs = 100
 
+    f, t, Sxx = signal.spectrogram(
+        x, Fs, window=signal.get_window("hamming", 256),
+        nperseg=256, noverlap=128
+    )
+    Sxx_dB = 10 * np.log10(Sxx + 1e-12)
+
+    T, F = np.meshgrid(t, f)
+
+    fig = plt.figure(figsize=(12, 7))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot as wireframe
+    wire = ax.plot_wireframe(
+        T, F, Sxx_dB,
+        rstride=3, cstride=3,
+        color='steelblue',
+        linewidth=0.4
+    )
+
+    ax.set_xlabel('Time [s]', labelpad=10)
+    ax.set_ylabel('Frequency [Hz]', labelpad=10)
+    ax.set_zlabel('Amplitude [dB]', labelpad=10)
+    ax.set_title(f'3D Spectrogram (Wireframe) - {sensor_column}', fontsize=12, pad=15)
+    ax.view_init(elev=30, azim=-135)
+    #plt.tight_layout()
+    plt.savefig("graphs/3d_wire_spectrogram.png", dpi=300, bbox_inches="tight")
+    plt.show()
+
+def threeD_spectogram(df, sensor_column):
+    x = df[f'{sensor_column}']
+    Fs = 100  # Sampling frequency
+
+    # Compute spectrogram
+    f, t, Sxx = signal.spectrogram(
+        x, Fs, window=signal.get_window("hamming", 256),
+        nperseg=256, noverlap=128  # slightly higher overlap gives smoother curves
+    )
+
+    # Convert to decibel scale
+    Sxx_dB = 10 * np.log10(Sxx + 1e-12)
+
+    # Prepare meshgrid for 3D surface
+    T, F = np.meshgrid(t, f)
+
+    # Normalize for color mapping
+    norm = plt.Normalize(Sxx_dB.min(), Sxx_dB.max())
+    cmap = cm.get_cmap("viridis")  # same as 2D spectrogram default
+    colors = cmap(norm(Sxx_dB))  
+
+    # Create 3D figure
+    fig = plt.figure(figsize=(12, 7))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot as surface
+    surf = ax.plot_surface(
+        T, F, Sxx_dB,
+        facecolors=colors,
+        linewidth=0.3,
+        antialiased=True,
+        rstride=1,
+        cstride=1,
+        shade=False
+    )
+
+    # Label axes (consistent with physical meaning)
+    ax.set_xlabel('Time (s)', labelpad=10)
+    ax.set_ylabel('Frequency (Hz)', labelpad=10)
+    ax.set_zlabel('Amplitude [dB]', labelpad=10)
+    ax.set_title(f'3D Spectrogram - {sensor_column}', fontsize=12, pad=15)
+
+    # Adjust 3D viewing angle (like MATLAB waterfall)
+    ax.view_init(elev=30, azim=-135)
+
+    # Add colorbar for amplitude scale
+    mappable = cm.ScalarMappable(cmap=cmap, norm=norm)
+    mappable.set_array([])
+    cbar = plt.colorbar(mappable, ax=ax, shrink=0.6, aspect=10, pad=0.1)
+    cbar.set_label('Amplitude [dB]', rotation=270, labelpad=15)
+    #plt.tight_layout()
+    plt.savefig("graphs/3D_Spectrogram.png", dpi=300, bbox_inches="tight")
+    plt.show()
 
 def fft_spectrum(df, sensor_column):
     signal= df[f'{sensor_column}']
@@ -71,7 +159,6 @@ def fft_spectrum(df, sensor_column):
     plt.savefig('graphs/fft_spectrum.png')
     plt.show()
 
-
 def power_spectrum(df, sensor_column):
     #fs-frequency bins, pxx_den -power at each frequency  with the unit of v2/hz
     x = df[f'{sensor_column}']
@@ -81,7 +168,7 @@ def power_spectrum(df, sensor_column):
     f, Pxx = signal.welch(
         x, 
         fs=fs, 
-        nperseg=256,
+        nperseg=512,
         scaling= 'density'       # use ~10 sec window for good averaging      # 50% overlap    # gives units of V²/Hz (PSD)
     )
 
@@ -92,18 +179,101 @@ def power_spectrum(df, sensor_column):
     freq_limit = 50
     mask = f <= freq_limit
     f, Pxx = f[mask], Pxx[mask]
+
+    plt.figure(figsize=(12,6))
     plt.semilogy(f, Pxx)
     plt.title(f"Power Spectrum Density - {sensor_column}")
     plt.xlabel('frequency [Hz]')
     plt.ylabel('PSD * 1e6 [V**2/Hz]') # 'y-PSD' should be scaled to *10e-6 
-    #plt.legend()
-    #plt.grid(True, ls='--', alpha=0.6)
+    plt.legend(fontsize=8)
+    plt.grid(True, ls='--', alpha=0.6)
     plt.tight_layout()
     plt.savefig('graphs/power_spectrum.png')
+
+    plt.show()
+
+def compare_diff_windows(df, sensor_column):
+    x= df[f'{sensor_column}']
+    fs = 100 #HZ
+
+    window_types = ['hann', 'hamming', 'blackman', 'flattop', 'bartlett']
+    nperseg_values = [256, 512, 1024, 2048]
+
+    plt.figure(figsize=(12,6))
+
+    for window in window_types:
+        for nperseg in nperseg_values:
+            f, pxx = signal.welch(x, fs=fs, window=window, nperseg=nperseg, scaling='density')
+            plt.semilogy(f, pxx, label = f'{window}, n={nperseg}')
+
+    plt.xlabel('Frequecy [Hz]')
+    plt.ylabel('PSD [V²/Hz]')
+    plt.title(f'PSD Comparison for {sensor_column}')
+    plt.legend(fontsize=8)
+    plt.grid(True, ls='--', alpha=0.6)
+    plt.tight_layout()
+    plt.savefig('graphs/psd_window_comparison.png')
+    plt.show()
+
+def compare_windows_grid_with_peaks(df, sensor_column):
+    """
+    Compare Welch PSD for multiple window types and segment lengths,
+    highlighting the top frequency peaks in each plot.
+    """
+    x = df[f'{sensor_column}']
+    fs = 100  # Sampling frequency [Hz]
+
+    # Window types and segment lengths to test
+    window_types = ['hann', 'hamming', 'blackman']
+    nperseg_values = [256, 512, 1024, 2048]
+
+    # Create subplot grid
+    fig, axes = plt.subplots(len(window_types), len(nperseg_values), figsize=(14, 8), sharex=True, sharey=True)
+
+    for i, window in enumerate(window_types):
+        for j, nperseg in enumerate(nperseg_values):
+            f, Pxx = signal.welch(
+                x,
+                fs=fs,
+                window=window,
+                nperseg=nperseg,
+                scaling='density'
+            )
+
+            # Focus on a specific frequency range (adjust as needed)
+            mask = f <= 50
+            f, Pxx = f[mask], Pxx[mask]
+
+            ax = axes[i, j]
+            ax.semilogy(f, Pxx, color='steelblue', linewidth=1.2)
+            ax.set_title(f"{window}, n={nperseg}", fontsize=9)
+
+            # --- Peak Detection ---
+            # Find local peaks in PSD (tune height & distance if needed)
+            peaks, properties = signal.find_peaks(Pxx, height=np.max(Pxx)*0.05, distance=15)
+
+            # Mark detected peaks
+            ax.plot(f[peaks], Pxx[peaks], 'ro', markersize=3)
+            for k in peaks[:5]:  # Annotate up to 5 most significant peaks
+                ax.annotate(f"{f[k]:.1f} Hz", (f[k], Pxx[k]),
+                            textcoords="offset points", xytext=(5, 5),
+                            fontsize=7, color='red', rotation=30)
+
+            ax.grid(True, linestyle="--", alpha=0.4)
+
+    # Shared labels
+    fig.suptitle(f"PSD Comparison with Peak Detection — {sensor_column}", fontsize=14)
+    for ax in axes[-1]:
+        ax.set_xlabel("Frequency [Hz]")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("PSD [V²/Hz]")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig('graphs/psd_window_comparison_with_peak_detection.png')
     plt.show()
 
 
-### ex to run the script--->  python3 spectogram.py --path /Users/thomas/Data/Data_sensors/20250303/M001_2025-03-03_00-00-00_gg-108_int-1_th.csv --sensor 030911EF_x                               
+### ex to run the script--->  python3 spectogram.py --path /Users/thomas/Data/Data_sensors/20250303/csv_acc/M001_2025-03-03_16-00-00_gg-108_int-17_th.csv  --sensor 030911EF_x
 def main():
     parser = argparse.ArgumentParser(description="create a spectogram, using sensor data using for specific columns")
     parser.add_argument('--path', type=str, required=True, help="Path to file")
@@ -117,11 +287,19 @@ def main():
 
     df = filter_dc_by_mean(df, sensor_column)
 
-    spectogram(df[:100000], sensor_column)
+    #spectogram(df[:100000], sensor_column)
 
-    fft_spectrum(df[:100000], sensor_column)
+    #spectrogram_3d_wireframe(df[:10000], sensor_column)
 
-    power_spectrum(df[:100000], sensor_column)
+    #threeD_spectogram(df[:10000], sensor_column)
+
+    fft_spectrum(df, sensor_column)
+
+    power_spectrum(df, sensor_column)
+
+    #compare_diff_windows(df[:100000], sensor_column)
+
+    compare_windows_grid_with_peaks(df, sensor_column)
     
 if __name__ == "__main__":
     main()

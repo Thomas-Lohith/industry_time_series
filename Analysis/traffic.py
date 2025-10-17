@@ -140,6 +140,7 @@ def plot_moving_average_for_day(df, target_date, time_window_minutes=60, save_pa
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"✓ Plot saved to: {save_path}")
+        plt.show()
     else:
         plt.show()
     
@@ -216,6 +217,7 @@ def plot_multiple_time_windows(df, target_date, time_windows=[30, 60, 120], save
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"✓ Comparison plot saved to: {save_path}")
+        plt.show()
     else:
         plt.show()
 
