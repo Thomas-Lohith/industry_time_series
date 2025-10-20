@@ -176,7 +176,7 @@ def power_spectrum(df, sensor_column):
     Pxx = Pxx * 1e6
 
     # Focus on the most informative frequency range (0–7 Hz)
-    freq_limit = 50
+    freq_limit = 20
     mask = f <= freq_limit
     f, Pxx = f[mask], Pxx[mask]
 
@@ -185,6 +185,7 @@ def power_spectrum(df, sensor_column):
     plt.title(f"Power Spectrum Density - {sensor_column}")
     plt.xlabel('frequency [Hz]')
     plt.ylabel('PSD * 1e6 [V**2/Hz]') # 'y-PSD' should be scaled to *10e-6 
+    #plt.ylim(1e-6, 1e2)
     plt.legend(fontsize=8)
     plt.grid(True, ls='--', alpha=0.6)
     plt.tight_layout()
@@ -215,17 +216,19 @@ def compare_diff_windows(df, sensor_column):
     plt.savefig('graphs/psd_window_comparison.png')
     plt.show()
 
-def compare_windows_grid_with_peaks(df, sensor_column):
+def plot_comparing_windows_grid_with_peaks(df, sensor_column, save_path=None):
     """
     Compare Welch PSD for multiple window types and segment lengths,
     highlighting the top frequency peaks in each plot.
     """
     x = df[f'{sensor_column}']
     fs = 100  # Sampling frequency [Hz]
+    start_time = df["time"].iloc[0]
+    end_time = df["time"].iloc[-1]
 
     # Window types and segment lengths to test
-    window_types = ['hann', 'hamming', 'blackman']
-    nperseg_values = [256, 512, 1024, 2048]
+    window_types = ['hann', 'blackman', 'flattop']
+    nperseg_values = [512, 1024, 2048, 4096, 8192] #~5.12, 10.24, 20.48, 40.96, 81.92 seconds (since fs=100 Hz).
 
     # Create subplot grid
     fig, axes = plt.subplots(len(window_types), len(nperseg_values), figsize=(14, 8), sharex=True, sharey=True)
@@ -239,9 +242,10 @@ def compare_windows_grid_with_peaks(df, sensor_column):
                 nperseg=nperseg,
                 scaling='density'
             )
-
+            # Convert to micro units if needed (optional)
+            Pxx = Pxx * 1e6
             # Focus on a specific frequency range (adjust as needed)
-            mask = f <= 50
+            mask = f <= 20
             f, Pxx = f[mask], Pxx[mask]
 
             ax = axes[i, j]
@@ -250,7 +254,9 @@ def compare_windows_grid_with_peaks(df, sensor_column):
 
             # --- Peak Detection ---
             # Find local peaks in PSD (tune height & distance if needed)
-            peaks, properties = signal.find_peaks(Pxx, height=np.max(Pxx)*0.05, distance=15)
+            #freq_resolution = fs / nperseg(ex. 100/1024 = 0.0976Hz)
+            #distance ≈ desired_freq_spacing / freq_resolution (ex. 0.5Hz/0.0976)
+            peaks, properties = signal.find_peaks(Pxx, height=np.max(Pxx)*0.02, distance=20)# np.max(Pxx)*0.05, distance=15)
 
             # Mark detected peaks
             ax.plot(f[peaks], Pxx[peaks], 'ro', markersize=3)
@@ -262,15 +268,21 @@ def compare_windows_grid_with_peaks(df, sensor_column):
             ax.grid(True, linestyle="--", alpha=0.4)
 
     # Shared labels
-    fig.suptitle(f"PSD Comparison with Peak Detection — {sensor_column}", fontsize=14)
+    fig.suptitle(f"PSD Comparison with Peak Detection — {sensor_column} \nStart: {start_time} | End: {end_time}", fontsize=14)
     for ax in axes[-1]:
         ax.set_xlabel("Frequency [Hz]")
     for ax in axes[:, 0]:
-        ax.set_ylabel("PSD [V²/Hz]")
+        ax.set_ylabel('PSD * 1e6 [V**2/Hz]') # 'y-PSD' should be scaled to *10e-6
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig('graphs/psd_window_comparison_with_peak_detection.png')
-    plt.show()
+
+    if save_path:
+        plt.savefig(f'graphs/windows_comp/psd_window_comparison_with_peak_detection_20freq.png')
+        plt.savefig(save_path)
+        plt.show()
+    else:
+        plt.savefig(f'graphs/windows_comp/psd_window_comparison_with_peak_detection_20freq.png')
+        plt.show()
 
 
 ### ex to run the script--->  python3 spectogram.py --path /Users/thomas/Data/Data_sensors/20250303/csv_acc/M001_2025-03-03_16-00-00_gg-108_int-17_th.csv  --sensor 030911EF_x
@@ -278,10 +290,12 @@ def main():
     parser = argparse.ArgumentParser(description="create a spectogram, using sensor data using for specific columns")
     parser.add_argument('--path', type=str, required=True, help="Path to file")
     parser.add_argument("--sensor", type=str, required=True, help="Sensor column name(s) to process")
+    parser.add_argument('--date', type=str, required=True, help="target date")
     args = parser.parse_args()
 
     path = args.path
     sensor_column = args.sensor
+    target_date = args.date
 
     df = sensor_data(path, sensor_column)
 
@@ -299,7 +313,8 @@ def main():
 
     #compare_diff_windows(df[:100000], sensor_column)
 
-    compare_windows_grid_with_peaks(df, sensor_column)
+    plot_comparing_windows_grid_with_peaks(df, sensor_column,
+                                           save_path=f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/spectrum/psd_window_comparison_{target_date.replace("/", "_")}.png' )
     
 if __name__ == "__main__":
     main()
