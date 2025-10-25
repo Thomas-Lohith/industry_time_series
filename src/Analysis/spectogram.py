@@ -277,11 +277,11 @@ def plot_comparing_windows_grid_with_peaks(df, sensor_column, save_path=None):
     plt.tight_layout(rect=[0, 0, 1, 0.96])
 
     if save_path:
-        plt.savefig(f'graphs/windows_comp/psd_window_comparison_with_peak_detection_20freq.png')
+        plt.savefig(f'graphs/windows_comp/{sensor_column}_psd_window_comparison_with_peak_detection_20freq.png')
         plt.savefig(save_path)
         plt.show()
     else:
-        plt.savefig(f'graphs/windows_comp/psd_window_comparison_with_peak_detection_20freq.png')
+        plt.savefig(f'graphs/windows_comp/{sensor_column}_ psd_window_comparison_with_peak_detection_20freq.png')
         plt.show()
 
 
