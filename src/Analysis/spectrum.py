@@ -13,11 +13,11 @@ def compare_power_spectra(paths, sensor_column, labels=None, freq_limit=20, save
     Each path corresponds to a different measurement (e.g., with/without traffic).
     """
     fs = 100
-    nperseg = 512
+    nperseg = 2048
     window_type = 'hann'
 
     plt.figure(figsize=(12, 6))
-    colors = plt.cm.viridis(np.linspace(0, 1, len(paths)))  # colormap for multiple lines
+    #colors = plt.cm.viridis(np.linspace(0, 1, len(paths)))  # colormap for multiple lines
 
     for i, path in enumerate(paths):
         # --- Load data ---
@@ -32,6 +32,10 @@ def compare_power_spectra(paths, sensor_column, labels=None, freq_limit=20, save
         # --- Preprocess signal ---
         x = df[sensor_column].dropna()
         x = x - x.mean()
+
+        #--get the time stamp
+        start_time = df["time"].iloc[0]
+        end_time = df["time"].iloc[-1]
 
         # --- Compute Welch PSD ---
         f, Pxx = signal.welch(
@@ -48,8 +52,10 @@ def compare_power_spectra(paths, sensor_column, labels=None, freq_limit=20, save
         Pxx *= 1e6  # convert to µ-units (optional)
 
         # --- Plot each PSD ---
-        label = labels[i] if labels else f"Dataset {i+1}"
-        plt.semilogy(f, Pxx, label=label, color=colors[i], linewidth=1.2)
+        #label = labels[i] if labels else f"Dataset {i+1}"
+        label =f"Start: {start_time} | End: {end_time}"
+
+        plt.semilogy(f, Pxx, label=label, linewidth=1.2) #color=colors[i], 
 
     plt.title(f"Superimposed Power Spectral Densities — {sensor_column}")
     plt.xlabel("Frequency [Hz]")
@@ -61,7 +67,7 @@ def compare_power_spectra(paths, sensor_column, labels=None, freq_limit=20, save
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
     else:
-        plt.savefig("graphs/superimposed_psd.png", dpi=300, bbox_inches="tight")
+        plt.savefig(f"graphs/{sensor_column}_superimposed_psd.png", dpi=300, bbox_inches="tight")
 
     plt.show()
 
