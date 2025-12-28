@@ -108,7 +108,7 @@ def plot_moving_average_for_day(df, target_date, time_window_minutes=60, save_pa
     # Plot moving average
     ax.plot(day_data.index, day_data['MovingAverage'], 
             label=f'Moving Average ({time_window_minutes} minutes window)', 
-            color='#FF6347', linewidth=3, marker='s', markersize=5)
+            color='#FF6347', linewidth=2, marker='s', markersize=5)
     
     # Customize the plot
     ax.set_xlabel('Time of Day', fontsize=13, fontweight='bold')

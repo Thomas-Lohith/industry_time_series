@@ -264,12 +264,14 @@ def main():
     parser.add_argument('--path', type = str, required=True, help= 'path for the file')
     parser.add_argument('--start_time', type=str, required=True, help= 'starting time frame interedted in')
     parser.add_argument('--duration_mins', type=float, required=True, help = 'duration in mins of time frame interested')
+    parser.add_argument('--sensor', type=str, default=None, help = 'sensor to be anlaysed')
 
     #ex for script RUNNING: python3 vibration_analysis.py --path  --start_time --duration_mins
     args = parser.parse_args()
     path = args.path # Path to your parquet file
     start_time = args.start_time 
     duration_mins = args.duration_mins
+    sensor_columns = args.sensor
       
     # Load data using Polars
     df, sensor_columns, time_column = load_data_polars(path)
@@ -280,7 +282,7 @@ def main():
     # visualise each sensor in campate for a sample interval
     sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
     
-    multi_sensor_spectrogram(sampled_df, sensor_columns, cols=3)
+    #multi_sensor_spectrogram(sampled_df, sensor_columns, cols=3)
 
     #visualize_sensor_histograms(sampled_df, sensor_columns, bins=50)
    

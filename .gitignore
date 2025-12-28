@@ -1,0 +1,11 @@
+# Ignore environment files
+venv/
+
+# Ignore dataset
+
+
+# Ignore the info of sensors in the repo and also thresholds
+src/shared/sensors.csv
+src/shared/thresholds.csv
+src/shared/old_thresholds_abs.csv
+src/shared/thresholds_abs.csv
