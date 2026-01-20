@@ -512,53 +512,14 @@ Examples:
         """
     )
     
-    parser.add_argument(
-        '--path',
-        type=str,
-        required=True,
-        help='Path to CSV or Parquet data file'
-    )
-    parser.add_argument(
-        '--start_time',
-        type=str,
-        required=True,
-        help='Start time (format: YYYY/MM/DD HH:MM:SS)'
-    )
-    parser.add_argument(
-        '--duration_mins',
-        type=float,
-        required=True,
-        help='Duration in minutes to analyze'
-    )
-    parser.add_argument(
-        '--sensor',
-        type=str,
-        default=None,
-        help='Sensor ID(s) to analyze (comma-separated for multiple)'
-    )
-    parser.add_argument(
-        '--backend',
-        type=str,
-        choices=['matplotlib', 'plotly'],
-        default='matplotlib',
-        help='Visualization backend'
-    )
-    parser.add_argument(
-        '--output_dir',
-        type=str,
-        default='./graphs',
-        help='Directory to save output figures'
-    )
-    parser.add_argument(
-        '--no-spectrogram',
-        action='store_true',
-        help='Skip spectrogram generation'
-    )
-    parser.add_argument(
-        '--no-histogram',
-        action='store_true',
-        help='Skip histogram generation'
-    )
+    parser.add_argument('--path', type=str, required=True, help='Path to CSV or Parquet data file')
+    parser.add_argument('--start_time', type=str, required=True, help='Start time (format: YYYY/MM/DD HH:MM:SS)')
+    parser.add_argument('--duration_mins', type=float, required=True, help='Duration in minutes to analyze')
+    parser.add_argument('--sensor', type=str, default=None, help='Sensor ID(s) to analyze (comma-separated for multiple)')
+    parser.add_argument('--backend', type=str, choices=['matplotlib', 'plotly'], default='matplotlib', help='Visualization backend')
+    parser.add_argument('--output_dir', type=str, default='./graphs', help='Directory to save output figures')
+    parser.add_argument('--no-spectrogram', action='store_true', help='Skip spectrogram generation')
+    parser.add_argument('--no-histogram', action='store_true', help='Skip histogram generation')
     
     args = parser.parse_args()
     

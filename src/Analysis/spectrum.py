@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 
 
-def compare_power_spectra(paths, sensor_column, labels=None, freq_limit=20, save_path=None):
+def compare_power_spectra(paths, sensor_column,freq_limit=20, save_path=None):
     """
     Compare Welch Power Spectral Density (PSD) across multiple datasets.
     Each path corresponds to a different measurement (e.g., with/without traffic).
@@ -52,7 +52,6 @@ def compare_power_spectra(paths, sensor_column, labels=None, freq_limit=20, save
         Pxx *= 1e6  # convert to µ-units (optional)
 
         # --- Plot each PSD ---
-        #label = labels[i] if labels else f"Dataset {i+1}"
         label =f"Start: {start_time} | End: {end_time}"
 
         plt.semilogy(f, Pxx, label=label, linewidth=1.2) #color=colors[i], 
@@ -75,17 +74,24 @@ def main():
     parser = argparse.ArgumentParser(description="Create PSD/spectrograms and compare multiple datasets")
     parser.add_argument('--paths', nargs='+', required=True, help="Paths to multiple files (space-separated)")
     parser.add_argument("--sensor", type=str, required=True, help="Sensor column name to process")
-    parser.add_argument('--labels', nargs='*', help="Optional labels for datasets")
     parser.add_argument('--date', type=str, help="Target date (optional)")
     args = parser.parse_args()
 
     paths = args.paths
     sensor_column = args.sensor
-    labels = args.labels if args.labels else [f"Data {i+1}" for i in range(len(paths))]
 
     # Compare PSD across datasets
-    compare_power_spectra(paths, sensor_column, labels=labels)
+    compare_power_spectra(paths, sensor_column)
 
     
 if __name__ == '__main__':
     main()
+
+
+#write a program to plot spectrum of 15 mins samples to match the sampling rate of the telecamera data(vehicle count and type)
+
+#each graph should show the spectrum in 15min interval with the vehicle count as label below the graph
+#scripts: it should take an input of the {date} and {number}-to match the hour of that date in that date folder(csv_acc).
+#                --->search the date in the {input_folder_path1}
+#----------------->search for the date in the date column in the {input_folder_path2} and take the values each [column] and [column_name]
+# Now create a graph of spectrum with label of vehicle count 
