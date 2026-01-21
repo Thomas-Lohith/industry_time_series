@@ -4,7 +4,33 @@ import numpy as np
 from scipy import signal
 import argparse
 import matplotlib.pyplot as plt
+import os 
+from traffic import extract_date_from_datetime,extract_time_from_datetime
 
+
+def get_file_from_input_path1(path_to_folder, Date):
+    '''
+    get the file from the root folder and convert it to df 
+     '''
+    df = 
+    return df
+
+def load_and_process_data(file_path, sheet_name=0):
+    """Load Excel data and process it"""
+    # Read the Excel file
+    df = pd.read_excel(file_path, sheet_name=sheet_name, header=0)
+    
+    # Get all the columns 
+    #df = df.iloc[:, :2]
+    df.iloc[:, :1] = df['DateTime']
+    
+    # Extract date and time
+    df['Date'] = df['DateTime'].apply(extract_date_from_datetime)
+    df['Time'] = df['DateTime'].apply(extract_time_from_datetime)
+    
+    # Remove rows with missing data
+    df = df.dropna(subset=['Date', 'Time'])
+    return df
 
 
 def compare_power_spectra(paths, sensor_column,freq_limit=20, save_path=None):
@@ -83,15 +109,36 @@ def main():
     # Compare PSD across datasets
     compare_power_spectra(paths, sensor_column)
 
+
+    # Interactive mode
+    print(f"\n{'='*60}")
+    print("INTERACTIVE MODE")
+    print(f"{'='*60}")
+    user_input = input("\nWould you like to analyze a particular date? (y/n): ").strip().lower()
+    
+    if user_input == 'y':
+        user_date = input("Enter date (DD/MM/YYYY): ").strip()
+        user_window_hour = input("Enter time window in hour (e.g., 0, 1, 2...23): ").strip()
+
+        try:
+            time_window = int(user_window_hour)
+
+        except ValueError:
+            print("Invalid time window. Using default 15 minutes.")
+
     
 if __name__ == '__main__':
     main()
 
 
-#write a program to plot spectrum of 15 mins samples to match the sampling rate of the telecamera data(vehicle count and type)
-
+#write a program to plot spectrum graph of 15 mins samples to match the sampling rate of the telecamera data(vehicle count and type)
 #each graph should show the spectrum in 15min interval with the vehicle count as label below the graph
-#scripts: it should take an input of the {date} and {number}-to match the hour of that date in that date folder(csv_acc).
-#                --->search the date in the {input_folder_path1}
-#----------------->search for the date in the date column in the {input_folder_path2} and take the values each [column] and [column_name]
-# Now create a graph of spectrum with label of vehicle count 
+#scripts: it should take an input of the {date}--to get the folder with this date name in root folder, {number}-to match the hour of that date in that date folder(csv_acc).
+#ex:Format: YYYYMMDD/csv_acc/M001_YYYY-MM-DD_HH-00-00_gg-*_int-*_th.csv
+#--->search the {date} in the {input_folder_path1(root_folder)}. [root folder has files with date as name and each date folder has sub folder csv_acc and this folder has 24 files one for each hour ]
+#--->take the 15 min interval(with input of {sensor_id}) from this selected hour file
+# in order to take the exact 15 min interval we take the input {starting time} and calculate the 15 min from that time_str
+#--->for the label:search for the date in the date column in the {input_folder_path2(path to excel sheet)} and take the values each [column(vehical_count)] and [column_name(vehicle_type)] for the same 15 min interval
+# Now create a graph of power spectrum or the givem 15 min sample with label of each vehicle type and vehicle count 
+
+#example for power specctra caluclation
