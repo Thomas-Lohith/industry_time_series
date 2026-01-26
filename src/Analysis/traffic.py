@@ -60,7 +60,7 @@ def load_and_process_data(file_path, sheet_name=0):
     
     # Extract date and time
     df['Date'] = df['DateTime'].apply(extract_date_from_datetime)
-    df['Time'] = df['DateTime'].apply(extract_time_from_datetime)
+    df['Time'] = df['DateTime'].apply(extract_time_from_datetime )
     
     # Remove rows with missing data
     df = df.dropna(subset=['Date', 'Time', 'VehicleCount'])

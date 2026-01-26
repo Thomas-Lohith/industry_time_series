@@ -5,15 +5,8 @@ from scipy import signal
 import argparse
 import matplotlib.pyplot as plt
 import os 
-from traffic import extract_date_from_datetime,extract_time_from_datetime
 
 
-def get_file_from_input_path1(path_to_folder, Date):
-    '''
-    get the file from the root folder and convert it to df 
-     '''
-    df = 
-    return df
 
 def load_and_process_data(file_path, sheet_name=0):
     """Load Excel data and process it"""
@@ -100,7 +93,6 @@ def main():
     parser = argparse.ArgumentParser(description="Create PSD/spectrograms and compare multiple datasets")
     parser.add_argument('--paths', nargs='+', required=True, help="Paths to multiple files (space-separated)")
     parser.add_argument("--sensor", type=str, required=True, help="Sensor column name to process")
-    parser.add_argument('--date', type=str, help="Target date (optional)")
     args = parser.parse_args()
 
     paths = args.paths
