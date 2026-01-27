@@ -153,7 +153,7 @@ def run_15min_spectrum_pipeline(
 def main():
     run_15min_spectrum_pipeline(
         root_folder="/Users/thomas/Data/Data_sensors",
-        traffic_excel="/Users/thomas/Data/7_AID_webcam_data/Febbraio/classi.xlsx",
+        traffic_excel="/data/pool/c8x-98x/traffic_data/7_AID_webcam_data/Febbraio/classi.xlsx",
         date="20250208",
         hour=23,
         start_time_str="2025-02-08 23:00:00",
