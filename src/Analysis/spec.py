@@ -375,7 +375,7 @@ def main_parametric(args):
     # SUPERIMPOSE MODE: Overlay all plots on single graph
     if args.superimpose and len(args.start_time) > 1:
         print(f"\n{'='*60}")
-        print(f"SUPERIMPOSE MODE: Processing {len(args.start_time)} intervals")
+        print(f"SUPERIMPOSE MODE: Processing {len(args.start_time)} intervals \n")
         print(f"{'='*60}")
         
         data_list = []
