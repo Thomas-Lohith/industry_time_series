@@ -1,0 +1,8 @@
+Total Days: 99
+Mean Missing %: 0.31
+Median Missing %: 0.00
+Max Missing %: 9.34
+Min Missing %: 0.00
+Days > 10% missing: 0
+Days > 20% missing: 0
+Total Outage Events (>10%): 481
