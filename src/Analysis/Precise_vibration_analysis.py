@@ -227,8 +227,12 @@ def visualize_single_sensor(
         output_path: Path to save figure (if None, no save)
         figsize: Figure size for matplotlib
     """
+
+
     if sensor_id not in df.columns:
         raise ValueError(f"Sensor '{sensor_id}' not found in data")
+
+    
     
     logger.info(f"Visualizing single sensor: {sensor_id} [{backend}]")
     
@@ -570,9 +574,12 @@ Examples:
         if args.backend == 'plotly':
             output_file = output_file.with_suffix('.html')
         
+
+        targets = sensor_ids[0] if len(sensor_ids) == 1 else sensor_ids
+        
         visualize_sensors(
             df_pd,
-            sensor_ids,
+            targets,
             time_column,
             backend=args.backend,
             output_path=str(output_file)

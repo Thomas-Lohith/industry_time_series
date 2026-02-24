@@ -136,53 +136,53 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
 
     fig.suptitle("Sensor Vibration Plots (Vertical Direction)", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for suptitle
-    plt.savefig('graphs/subplots.png')
+    #plt.savefig('graphs/subplots.png')
     plt.show()
 
     # Save to file
-    fig.savefig(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/events_with_less_trafic/vibration_data_{start_time}.png', dpi=300)
+    #fig.savefig(f'src/results/Interactive_vibrations/vibration_data_{start_time} - {duration_mins} mins.png', dpi=300)
         
-#     fig = go.Figure()
-#    # Choose the sensors you want to plot
-#     sensor_list = sensor_columns[:6] # Adjust the number as needed
+    fig = go.Figure()
+   # Choose the sensors you want to plot
+    sensor_list = sensor_columns[:6] # Adjust the number as needed
 
-#     # Create subplot structure: 2 rows, 3 columns for 6 sensors
-#     n = len(sensor_list)
-#     cols = 3
-#     rows = -(-n // cols)
+    # Create subplot structure: 2 rows, 3 columns for 6 sensors
+    n = len(sensor_list)
+    cols = 3
+    rows = -(-n // cols)
 
-#     fig = make_subplots(
-#         rows=rows,
-#         cols=cols,
-#         subplot_titles=sensor_list  # Use sensor names as titles
-#     )
-#     # Loop and add each sensor's trace to the appropriate subplot
-#     for i, sensor in enumerate(sensor_list):
-#         row = (i // cols) + 1
-#         col = (i % cols) + 1
+    fig = make_subplots(
+        rows=rows,
+        cols=cols,
+        subplot_titles=sensor_list  # Use sensor names as titles
+    )
+    # Loop and add each sensor's trace to the appropriate subplot
+    for i, sensor in enumerate(sensor_list):
+        row = (i // cols) + 1
+        col = (i % cols) + 1
         
-#         fig.add_trace(
-#             go.Scatter(
-#                 x=sampled_df[time_column],
-#                 y=sampled_df[sensor],
-#                 mode='lines',
-#                 name=sensor,
-#                 line=dict(width=1),
-#                 opacity=0.8
-#             ),
-#             row=row,
-#             col=col
-#         )
+        fig.add_trace(
+            go.Scatter(
+                x=sampled_df[time_column],
+                y=sampled_df[sensor],
+                mode='lines',
+                name=sensor,
+                line=dict(width=1),
+                opacity=0.8
+            ),
+            row=row,
+            col=col
+        )
 
-#     # Update layout
-#     fig.update_layout(
-#         title_text="Sensor Vibration Plots (Vertical Direction)",
-#         showlegend=False
-#     )
-#     # Display the plot
-#     fig.show()
-#     fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/events_with_less_trafic/vibration_data_{start_time}.html')
-#     print("All sensors visualization saved to all_sensors_acceleration.png")
+    # Update layout
+    fig.update_layout(
+        title_text="Sensor Vibration Plots (Vertical Direction)",
+        showlegend=False
+    )
+    # Display the plot
+    fig.show()
+    fig.write_html(f'src/results/Interactive_vibrations/vibration_data_{start_time} - {duration_mins} mins.html')
+    print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
     return sampled_df
 
