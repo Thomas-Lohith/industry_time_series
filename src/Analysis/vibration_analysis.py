@@ -9,6 +9,8 @@ from scipy import signal
 import argparse
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 def memory_usage():
     """Print current memory usage"""
@@ -63,10 +65,111 @@ def load_data_polars(filepath):
     campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '03091207_x', '03091119_z'] 
     #sensor column on whole brideg
     all_campate_sensor_columns = ['030911FF_x', '03091017_z', '03091113_x', '0309123B_z', '03091111_z', '03091003_x'] 
-    sensor_columns = [col for col in all_campate_sensor_columns if col in df.columns]
-    #sensor_columns = sensor_columns['03091200_x', '030911EF_x', '030911FF_x']
+
+    first_campata = [ '030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '0309100F_x', '030910F6_x', '0309101E_x', '03091018_z']
+
+    sensor_columns = [col for col in first_campata if col in df.columns]
+    
     memory_usage()
     return df, sensor_columns, time_column
+
+def _get_filtered_mask(sensor_series: pd.Series, threshold: float, sample_period: int) -> np.ndarray:
+    """
+    Return a boolean mask of the same length as sensor_series.
+    True  → sample is inside an active window (|value| >= threshold,
+            plus the sample_period tail after each crossing).
+    False → sample is outside every active window.
+    """
+    n    = len(sensor_series)
+    mask = np.zeros(n, dtype=bool)
+    vals = sensor_series.to_numpy()   # work on a plain numpy array for speed
+
+    i = 0
+    while i < n:
+        if np.abs(vals[i]) >= threshold:
+            start = i
+            end   = min(i + sample_period, n)
+
+            # Extend the window as long as the signal keeps crossing threshold
+            while i < end:
+                if np.abs(vals[i]) >= threshold:
+                    end = min(i + sample_period, n)
+                i += 1
+
+            mask[start:end] = True
+        else:
+            i += 1
+
+    return mask
+
+
+def filterby_threshold(
+    data:          pd.DataFrame,
+    threshold:     float,
+    sample_period: int,
+    sensor_columns: "str | list[str]"):
+    """
+    Apply threshold-based event detection to one or more sensor columns.
+    """
+    # ── Normalise to list ────────────────────────────────────────────────────
+    if isinstance(sensor_columns, str):
+        sensor_columns = [sensor_columns]
+
+    # ── Output DataFrame – start with the time column ────────────────────────
+    filtered_df = pd.DataFrame({'time': data['time'].to_numpy()})
+    ratios: dict[str, float] = {}
+
+    # ── Process each sensor independently ───────────────────────────────────
+    for col in sensor_columns:
+        sensor_series = pd.Series(data[col].to_numpy() if hasattr(data[col], 'to_numpy') else data[col])  # guarantee 0-based index
+        mask          = _get_filtered_mask(sensor_series, threshold, sample_period)
+
+        # Build filtered signal: keep value where mask is True, else 0
+        filtered_vals = sensor_series.to_numpy().copy().astype(float)
+        filtered_vals[~mask] = 0.0
+
+        filtered_df[col]                = filtered_vals
+        filtered_df[f'{col}_original']  = sensor_series.to_numpy()
+        ratios[col]                     = mask.sum() / len(mask)
+
+    # ── Plot: one subplot per sensor, 2-column grid ──────────────────────────
+    n    = len(sensor_columns)
+    cols = min(2, n)
+    rows = -(-n // cols)   # ceiling division
+
+    fig, axes = plt.subplots(rows, cols, figsize=(10 * cols, 4 * rows), sharex=False)
+    axes = np.array(axes).flatten()
+
+    for i, col in enumerate(sensor_columns):
+        ax       = axes[i]
+        time_arr = filtered_df['time']
+        original = filtered_df[f'{col}_original']
+        filtered = filtered_df[col]
+
+        ax.plot(time_arr, original, label='original', linewidth=0.8, alpha=0.6)
+        ax.plot(time_arr, filtered, label='filtered',
+                color='y', linewidth=1.0, alpha=0.85)
+        ax.axhline( threshold, color='red', linestyle='--', linewidth=0.9, label='threshold')
+        ax.axhline(-threshold, color='red', linestyle='--', linewidth=0.9)
+
+        ax.set_title(f'{col}   (retained: {ratios[col]:.1%})', fontsize=11)
+        ax.set_xlabel('Time',         fontsize=10)
+        ax.set_ylabel('Acceleration', fontsize=10)
+        ax.tick_params(axis='x', labelsize=8, rotation=30)
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+
+    # Hide unused panels when n is not a perfect multiple of cols
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    fig.suptitle('Threshold Filtering – All Sensors', fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig('ETFA_multisensor.png', dpi=150)
+    plt.show()
+
+    return filtered_df, ratios
+
 
 def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFrame:
   
@@ -116,9 +219,9 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
 
  
     # Choose the sensors you want to plot with matplolib
-    sensor_list = sensor_columns[:6]  # or list(vertical_columns.values())[:6]
+    sensor_list = sensor_columns[:8]  # or list(vertical_columns.values())[:6]
     n = len(sensor_list)
-    cols = 3
+    cols = 4
     rows = -(-n // cols)
 
     fig, axes = plt.subplots(rows, cols, figsize=(15, 8), sharex=True)
@@ -181,7 +284,7 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     )
     # Display the plot
     fig.show()
-    fig.write_html(f'src/results/Interactive_vibrations/vibration_data_{start_time} - {duration_mins} mins.html')
+    #fig.write_html(f'src/results/Interactive_vibrations/vibration_data_{start_time} - {duration_mins} mins.html')
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
     return sampled_df
@@ -259,6 +362,123 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     print("Sensor histograms saved to sensor_histograms.png")
     memory_usage()
 
+
+def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2,
+                      save_path='waterfall_3d.png'):
+    """
+    3D Waterfall plot showing vehicle-induced acceleration across multiple bridge sensors.
+    """
+    print("Generating 3D Waterfall plot...")
+    memory_usage()
+
+    sensor_list = sensor_columns[:8]          # cap at 6 sensors for readability
+    n_sensors   = len(sensor_list)
+
+    if n_sensors == 0:
+        print("No sensor columns available for waterfall plot.")
+        return
+
+    # ── Build time axis in seconds ────────────────────────────────────────────
+    # Use elapsed seconds from the first timestamp so the X-axis is readable
+    t_raw = df[time_column].values
+    if hasattr(t_raw[0], 'timestamp'):          # datetime objects
+        t_sec = np.array([(ts - t_raw[0]).total_seconds() for ts in t_raw])
+    else:                                        # numpy datetime64
+        t_sec = (t_raw - t_raw[0]).astype('timedelta64[ms]').astype(float) / 1000.0
+
+    # Downsample for speed
+    step   = max(1, downsample_step)
+    t_ds   = t_sec[::step]
+
+    # ── Collect signals ───────────────────────────────────────────────────────
+    signals = []
+    for col in sensor_list:
+        sig = df[col].values[::step].astype(float)
+        signals.append(sig)
+
+    # ── Colour map: one colour per sensor (tab10, front → back) ─────────────
+    cmap   = plt.get_cmap("tab10")
+    colors = [cmap(i / max(n_sensors - 1, 1)) for i in range(n_sensors)]
+
+    # ── Y-axis: integer positions for sensors, labelled with sensor names ─────
+    # We space sensors 1 unit apart on the Y-axis; labels replace the numbers
+    y_positions = np.arange(n_sensors, dtype=float)
+
+    # ── Figure (white theme) ──────────────────────────────────────────────────
+    fig = plt.figure(figsize=(14, 8))
+    fig.patch.set_facecolor("white")
+    ax  = fig.add_subplot(111, projection="3d")
+    ax.set_facecolor("white")
+
+    for i in range(n_sensors - 1, -1, -1):     # draw back-to-front for overlap
+        y   = y_positions[i]
+        sig = sig
+        col = colors[i]
+
+        # Closed polygon path for the waterfall ribbon
+        verts_x = np.concatenate([[t_ds[0]], t_ds, [t_ds[-1]]])
+        verts_z = np.concatenate([[0],        sig,  [0]])
+        verts_y = np.full_like(verts_x, y)
+
+        verts = [list(zip(verts_x, verts_y, verts_z))]
+        poly  = Poly3DCollection(verts, alpha=0.35, zorder=i)
+        poly.set_facecolor((*col[:3], 0.20))
+        poly.set_edgecolor((*col[:3], 0.0))
+        ax.add_collection3d(poly)
+
+        # Solid line on top of the ribbon
+        ax.plot(t_ds, [y] * len(t_ds), sig,
+                color=col, linewidth=0.9, alpha=0.95, zorder=i + n_sensors)
+
+    # ── Axes labels ───────────────────────────────────────────────────────────
+    ax.set_xlabel("Elapsed Time  (s)",        color="black", fontsize=10, labelpad=10)
+    ax.set_ylabel("Sensor",                   color="black", fontsize=10, labelpad=14)
+    ax.set_zlabel("Acceleration  (m/s²)",     color="black", fontsize=10, labelpad=8)
+    ax.set_title("Bridge Accelerometers – 3D Waterfall (Vehicle Pass)",
+                 color="black", fontsize=13, fontweight="bold", pad=18)
+
+    # Replace numeric Y ticks with sensor names
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(sensor_list, fontsize=7, color="black")
+
+    ax.set_xlim(t_ds[0], t_ds[-1])
+    ax.set_ylim(y_positions[0] - 0.5, y_positions[-1] + 0.5)
+
+    ax.tick_params(colors="black", labelsize=7.5)
+    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+        pane.fill = False
+        pane.set_edgecolor("#cccccc")
+
+    ax.xaxis.line.set_color("#cccccc")
+    ax.yaxis.line.set_color("#cccccc")
+    ax.zaxis.line.set_color("#cccccc")
+    ax.grid(True, color="#dddddd", linewidth=0.4)
+
+    # Colour bar mapping sensor index → sensor name
+    sm = plt.cm.ScalarMappable(
+        cmap="tab10",
+        norm=plt.Normalize(0, n_sensors - 1)
+    )
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, shrink=0.45, pad=0.08, aspect=18)
+    cbar.set_label("Sensor index (front → back)", color="black", fontsize=8)
+    cbar.set_ticks(np.arange(n_sensors))
+    cbar.set_ticklabels(
+        [s[:8] for s in sensor_list],   # truncate long names for the colour bar
+        fontsize=6
+    )
+    cbar.ax.yaxis.set_tick_params(colors="black", labelsize=6)
+    cbar.outline.set_edgecolor("#cccccc")
+
+    ax.view_init(elev=28, azim=-55)
+    plt.tight_layout()
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True) if os.path.dirname(save_path) else None
+    plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
+    print(f"3D Waterfall plot saved to: {save_path}")
+    plt.show()
+    memory_usage()
+
 def main():
     parser = argparse.ArgumentParser('Analyse the vibration realting the dyanmic weighing data')
     parser.add_argument('--path', type = str, required=True, help= 'path for the file')
@@ -272,19 +492,42 @@ def main():
     start_time = args.start_time 
     duration_mins = args.duration_mins
     sensor_columns = args.sensor
+    threshold = 0.0005
+    sample_period = 200
       
     # Load data using Polars
     df, sensor_columns, time_column = load_data_polars(path)
 
+    
+
     # Process the filtered data
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
 
+    
+
+    
+        
+        
+    
+
     # visualise each sensor in campate for a sample interval
     sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
+
+    filtered_df, signal_fil_ratio = filterby_threshold(sampled_df, threshold, sample_period, sensor_columns)
     
     #multi_sensor_spectrogram(sampled_df, sensor_columns, cols=3)
 
     #visualize_sensor_histograms(sampled_df, sensor_columns, bins=50)
+
+    waterfall_3d_plot(
+            df=filtered_df,
+            sensor_columns=sensor_columns,
+            time_column=time_column,
+            fs=100,
+            downsample_step=2,
+            save_path='waterfall_3d_2.png'
+        )
+
    
     print("Analysis complete!")
     memory_usage()

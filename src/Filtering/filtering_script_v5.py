@@ -28,14 +28,14 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     # Extract sensor data
     sensor_data = data[sensor_column]
     filtered_indices = []
-    filtered_df = pd.DataFrame(columns=['time', 'original_signal', sensor_column])
+    filtered_df = pd.DataFrame(columns=['time', 'filtered_signal', sensor_column])
     
     i = 0
     while i < len(data):
         # Check if current value exceeds threshold
         if np.abs(sensor_data.iloc[i]) >= threshold:
             # Found start of segment
-            start = i
+            start = i 
             end = min(i + sample_period, len(sensor_data))
             
             # Extend window if values continue to exceed threshold
@@ -53,7 +53,7 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df['time'] = data['time']
     filtered_df[sensor_column] = filtered_sensor_data
     filtered_df[sensor_column] = filtered_df[sensor_column].fillna(0)
-    filtered_df['original_signal'] = sensor_data
+    filtered_df['filtered_signal'] = sensor_data
     
     # Optional: Visualize each filtered result
     # plt.figure(figsize=(16, 5))
