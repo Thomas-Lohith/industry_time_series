@@ -5,7 +5,8 @@ venv/
 
 
 # Ignore the info of sensors in the repo and also thresholds
-src/shared/sensors.csv
-src/shared/thresholds.csv
-src/shared/old_thresholds_abs.csv
-src/shared/thresholds_abs.csv
+src/dataset/sensors.csv
+src/dataset/thresholds.csv
+src/dataset/old_thresholds_abs.csv
+src/dataset/thresholds_abs.csv
+

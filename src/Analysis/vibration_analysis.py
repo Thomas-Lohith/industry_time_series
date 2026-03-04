@@ -68,7 +68,11 @@ def load_data_polars(filepath):
 
     first_campata = [ '030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '0309100F_x', '030910F6_x', '0309101E_x', '03091018_z']
 
-    sensor_columns = [col for col in first_campata if col in df.columns]
+    # whole bridge overview: 106->93->83->78->67->54
+    whole_bridge_overview = [ '030911FF_x', '0309113F_z', '0309123B_z', '03091204_x', '03091111_z', '03091003_x']
+     #first campate sensors in order 106->105->104->53->52->51
+    #sensor_columns = [col for col in campate1a_sensor_columns if col in df.columns]  
+    sensor_columns = [col for col in whole_bridge_overview if col in df.columns]
     
     memory_usage()
     return df, sensor_columns, time_column
@@ -155,9 +159,11 @@ def filterby_threshold(
         ax.set_title(f'{col}   (retained: {ratios[col]:.1%})', fontsize=11)
         ax.set_xlabel('Time',         fontsize=10)
         ax.set_ylabel('Acceleration', fontsize=10)
+        ax.set_ylim(-0.006, 0.006)
         ax.tick_params(axis='x', labelsize=8, rotation=30)
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3)
+        
 
     # Hide unused panels when n is not a perfect multiple of cols
     for j in range(i + 1, len(axes)):
@@ -165,7 +171,7 @@ def filterby_threshold(
 
     fig.suptitle('Threshold Filtering – All Sensors', fontsize=13, fontweight='bold')
     plt.tight_layout()
-    plt.savefig('ETFA_multisensor.png', dpi=150)
+    plt.savefig('ETFA_multisensor_whole_bridge_overview.png', dpi=150)
     plt.show()
 
     return filtered_df, ratios
@@ -497,18 +503,9 @@ def main():
       
     # Load data using Polars
     df, sensor_columns, time_column = load_data_polars(path)
-
     
-
     # Process the filtered data
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
-
-    
-
-    
-        
-        
-    
 
     # visualise each sensor in campate for a sample interval
     sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
@@ -525,7 +522,7 @@ def main():
             time_column=time_column,
             fs=100,
             downsample_step=2,
-            save_path='waterfall_3d_2.png'
+            save_path='waterfall_3d_whole_bridge_overview.png'
         )
 
    
