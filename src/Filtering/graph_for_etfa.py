@@ -156,21 +156,21 @@ def filterby_threshold(data, threshold, sample_period, sensor_column):
     filtered_df[sensor_column] = filtered_df[sensor_column].fillna(0)
     filtered_df['original_signal'] = sensor_data
 
-    plt.figure(figsize=(16, 9))
-    plt.plot(data['time'], data[sensor_column], label ='original')
-    plt.plot(data['time'], filtered_df[sensor_column],label='filtered', color ='y', linewidth=1, alpha=0.7)
-    # Format the plot
-    plt.axhline(threshold, label='threshold', color='red', linestyle='--')
-    plt.axhline(-threshold, color='red', linestyle='--')
-    plt.xlabel('Time', fontsize=18)
-    plt.ylabel('Acceleration', fontsize=18)
-    plt.tick_params(axis='x', labelsize=18)
-    plt.tick_params(axis='y', labelsize=18)
-    plt.legend(fontsize=18)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig('ETFA.png')
-    plt.show()
+    # plt.figure(figsize=(16, 9))
+    # plt.plot(data['time'], data[sensor_column], label ='original')
+    # plt.plot(data['time'], filtered_df[sensor_column],label='filtered', color ='y', linewidth=1, alpha=0.7)
+    # # Format the plot
+    # plt.axhline(threshold, label='threshold', color='red', linestyle='--')
+    # plt.axhline(-threshold, color='red', linestyle='--')
+    # plt.xlabel('Time', fontsize=18)
+    # plt.ylabel('Acceleration', fontsize=18)
+    # plt.tick_params(axis='x', labelsize=18)
+    # plt.tick_params(axis='y', labelsize=18)
+    # plt.legend(fontsize=18)
+    # plt.grid(True, alpha=0.3)
+    # plt.tight_layout()
+    # plt.savefig('ETFA.png')
+    # plt.show()
 
 
     # Calculate ratio of filtered data to original data

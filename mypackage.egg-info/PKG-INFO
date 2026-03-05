@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: mypackage
+Version: 0.1.0
+Summary: this repo is meant ofr the bridge senosr analysis
+Author: Thomas Routhu
+Requires-Dist: numpy>=1.21
+Dynamic: author
+Dynamic: requires-dist
+Dynamic: summary
