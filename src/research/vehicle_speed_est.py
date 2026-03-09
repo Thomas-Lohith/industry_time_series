@@ -57,6 +57,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import matplotlib
+#from src.research.unsupervised_event_dtetction import manual_threshold
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -133,19 +134,19 @@ class Config:
     dt: float = 0.01                      # seconds per sample
 
     # --- Preprocessing (threshold-based window filter) ---
-    filter_threshold: float = 0.0003      # amplitude threshold to open an active window
-    filter_sample_period: int = 200       # samples to extend window after last crossing
-    filter_pre_trigger: int = 0           # samples before trigger to include in window
+    filter_threshold: float = 0.0005      # amplitude threshold to open an active window
+    filter_sample_period: int = 300       # samples to extend window after last crossing
+    filter_pre_trigger: int = 50           # samples before trigger to include in window
 
     # --- Event Detection ---
     # Envelope smoothing window (samples) for energy computation
-    envelope_window: int = 50             # 0.5s at 100Hz
+    envelope_window: int = 100             # 0.5s at 100Hz
     # Threshold = mean + threshold_sigma * std of the envelope
     threshold_sigma: float = 3.0
     # Minimum event duration in seconds (reject short spikes)
     min_event_duration_s: float = 0.3
     # Maximum event duration in seconds (reject unrealistically long events)
-    max_event_duration_s: float = 5.0
+    max_event_duration_s: float = 10.0
     # Minimum gap between separate events (seconds) - merge closer ones
     min_event_gap_s: float = 0.5
     # Use absolute value of signal for envelope (True) or squared (False)
@@ -153,14 +154,14 @@ class Config:
 
     # --- Event Correlation ---
     # Plausible vehicle speed range (km/h) for computing search windows
-    speed_min_kmh: float = 30.0
-    speed_max_kmh: float = 150.0
+    speed_min_kmh: float = 50.0
+    speed_max_kmh: float = 100.0
     # Maximum allowed shape dissimilarity (normalized cross-correlation < this => reject)
-    min_shape_similarity: float = 0.3
+    min_shape_similarity: float = 0.1
     # Maximum allowed amplitude ratio difference for matching
-    max_amplitude_ratio: float = 5.0
+    max_amplitude_ratio: float = 3.0
     # Minimum amplitude ratio
-    min_amplitude_ratio: float = 0.2
+    min_amplitude_ratio: float = 0.1
 
     # --- Speed Estimation ---
     # Reject speed estimates outside this range as outliers
@@ -390,9 +391,9 @@ def detect_events(filtered: np.ndarray, envelope: np.ndarray,
     env_mean = np.mean(envelope)
     env_std = np.std(envelope)
     threshold = env_mean + config.threshold_sigma * env_std
-
+    manual_threshold = config.filter_threshold
     # Find above-threshold regions
-    above = envelope > threshold
+    above = envelope > manual_threshold
     if not above.any():
         return []
 
@@ -413,6 +414,8 @@ def detect_events(filtered: np.ndarray, envelope: np.ndarray,
     # Pair starts and ends
     n_events = min(len(starts), len(ends))
     segments = list(zip(starts[:n_events], ends[:n_events]))
+    print(n_events)
+    print(segments)
 
     # Merge close segments
     merged = []
@@ -462,6 +465,7 @@ def detect_events(filtered: np.ndarray, envelope: np.ndarray,
         events.append(event)
 
     events.sort(key=lambda ev: ev.peak_time)
+    print(n_events)
     return events
 
 
@@ -508,8 +512,11 @@ def compute_time_delay_cross_correlation(
         Normalized correlation score at best lag (0-1).
     """
     # Normalize signals
-    s1 = sig1 - np.mean(sig1)
-    s2 = sig2 - np.mean(sig2)
+    # s1 = sig1 - np.mean(sig1)
+    # s2 = sig2 - np.mean(sig2)
+
+    s1=sig1
+    s2 = sig2
 
     norm1 = np.linalg.norm(s1)
     norm2 = np.linalg.norm(s2)
@@ -587,12 +594,16 @@ def correlate_events_across_sensors(
     first_sensor = sensor_order[0]
     first_events = all_events.get(first_sensor, [])
 
+    print(first_events)
+
     if not first_events:
         print(f"  No events detected on first sensor: {first_sensor}")
         return []
 
     # Track which events on downstream sensors have been matched
     used_events = {s: set() for s in sensor_order[1:]}
+
+    print(used_events)
 
     for anchor_event in first_events:
         matched_chain = [anchor_event]
@@ -632,7 +643,7 @@ def correlate_events_across_sensors(
                     amp_ratio = ev.peak_amplitude / (anchor_event.peak_amplitude + 1e-10)
                     if config.min_amplitude_ratio <= amp_ratio <= config.max_amplitude_ratio:
                         candidates.append((j, ev))
-
+            print(candidates)
             if not candidates:
                 valid_chain = False
                 break
@@ -665,7 +676,7 @@ def correlate_events_across_sensors(
                     seg1[:min_len], seg2[:min_len], max_lag, dt
                 )
 
-                if score > best_corr and score >= config.min_shape_similarity:
+                if score > best_corr or score >= config.min_shape_similarity:
                     best_corr = score
                     best_match = (j, cand_ev)
                     best_delay = cand_ev.peak_time - prev_ev.peak_time
@@ -701,6 +712,7 @@ def correlate_events_across_sensors(
                 confidence = (completeness * 0.3 + avg_corr * 0.4 +
                              speed_consistency * 0.3)
 
+                print(matched_chain)
                 vp = VehiclePass(
                     events=matched_chain,
                     time_delays=delays,
@@ -711,6 +723,7 @@ def correlate_events_across_sensors(
                     correlation_scores=corr_scores
                 )
                 vehicle_passes.append(vp)
+                print(vehicle_passes)
 
     vehicle_passes.sort(key=lambda vp: vp.events[0].peak_time)
     return vehicle_passes
@@ -756,9 +769,8 @@ def plot_detection_results(
         ax.plot(time_s, sig, color=colors[i], alpha=0.6, linewidth=0.5,
                 label=f'{sensor} (filtered)')
         # Plot envelope
-        ax.plot(time_s, env, color='black', alpha=0.8, linewidth=1.0,
-                label='Envelope')
-        ax.plot(time_s, -env, color='black', alpha=0.8, linewidth=1.0)
+        #ax.plot(time_s, env, color='black', alpha=0.8, linewidth=1.0, label='Envelope')
+        #ax.plot(time_s, -env, color='black', alpha=0.8, linewidth=1.0)
         # Threshold
         ax.axhline(threshold, color='red', linestyle='--', alpha=0.5,
                     linewidth=0.8, label=f'Threshold ({config.threshold_sigma}σ)')
@@ -1184,23 +1196,23 @@ Examples:
                              'Must start with 0. E.g.: 0 25 50')
 
     # Filter parameters
-    parser.add_argument('--filter_threshold', type=float, default=0.0003,
+    parser.add_argument('--filter_threshold', type=float, default=0.001,
                         help='Amplitude threshold to open active window (default: 0.0003)')
-    parser.add_argument('--filter_sample_period', type=int, default=200,
+    parser.add_argument('--filter_sample_period', type=int, default=300,
                         help='Samples to extend window after last threshold crossing (default: 200)')
-    parser.add_argument('--filter_pre_trigger', type=int, default=0,
+    parser.add_argument('--filter_pre_trigger', type=int, default=50,
                         help='Samples before trigger to include in window (default: 0)')
 
     # Tunable parameters
     parser.add_argument('--threshold_sigma', type=float, default=3.0,
                         help='Event detection threshold = mean + sigma*std (default: 3.0)')
-    parser.add_argument('--speed_min', type=float, default=30.0,
+    parser.add_argument('--speed_min', type=float, default=50.0,
                         help='Min plausible speed km/h (default: 30)')
-    parser.add_argument('--speed_max', type=float, default=150.0,
+    parser.add_argument('--speed_max', type=float, default=100.0,
                         help='Max plausible speed km/h (default: 150)')
     parser.add_argument('--min_event_duration', type=float, default=0.3,
                         help='Min event duration seconds (default: 0.3)')
-    parser.add_argument('--min_shape_similarity', type=float, default=0.3,
+    parser.add_argument('--b', type=float, default=0.3,
                         help='Min cross-correlation score for matching (default: 0.3)')
     parser.add_argument('--output_dir', default='graphs',
                         help='Output directory for plots (default: graphs)')
@@ -1223,7 +1235,7 @@ def main():
     config.speed_min_kmh          = args.speed_min
     config.speed_max_kmh          = args.speed_max
     config.min_event_duration_s   = args.min_event_duration
-    config.min_shape_similarity   = args.min_shape_similarity
+    config.min_shape_similarity   = args.b
 
     # Resolve sensors
     if args.sensor_group:
@@ -1258,3 +1270,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+#ex: python3 vehicle_speed_est.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 4 --sensors 030911FF_x 030911EF_x 03091155_z --b 0.1 --distances 0 32.36 83.91
+#ex: 
