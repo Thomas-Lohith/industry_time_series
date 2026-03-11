@@ -223,7 +223,7 @@ def slide_event_over_signal(event_signal, full_signal_b, event_start_idx,
             corrs.append(corr)
 
         lag_samples = pos - event_start_idx
-        lags.append(lag_samples * dt)
+        lags.append(lag_samples * dt) 
 
     if not corrs:
         return 0.0, 0.0, np.array([]), np.array([])
@@ -608,7 +608,7 @@ def main():
     parser.add_argument('--threshold', type=float, required=True,
                         help='Amplitude threshold for event trigger')
     parser.add_argument('--window_sec', type=float, default=20.0)
-    parser.add_argument('--pre_trigger_sec', type=float, default=0.5)
+    parser.add_argument('--pre_trigger_sec', type=float, default=5.0)
     parser.add_argument('--max_lag', type=float, default=5.0,
                         help='Max lag to search (seconds)')
     parser.add_argument('--output_dir', default='graphs')

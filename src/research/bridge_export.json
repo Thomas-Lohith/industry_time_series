@@ -1,0 +1,2288 @@
+{
+  "name": "Bridge",
+  "n_spans": 11,
+  "n_sensors": 106,
+  "spans": {
+    "11BR": {
+      "span_id": "11BR",
+      "sensors": [
+        {
+          "sensor_id": "030910F5_x",
+          "span_id": "11BR",
+          "relative_distance": 727.25,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.999876,
+              "mean": 0.997854,
+              "std": 0.000674
+            }
+          },
+          "extra": {
+            "sensor_id": "3",
+            "flexural": "030910F5_y",
+            "torsional": "030910F5_z",
+            "Base_id": "030910F5"
+          }
+        },
+        {
+          "sensor_id": "03091034_x",
+          "span_id": "11BR",
+          "relative_distance": 727.25,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.007283,
+              "mean": 1.005198,
+              "std": 0.000695
+            }
+          },
+          "extra": {
+            "sensor_id": "56",
+            "flexural": "03091034_y",
+            "torsional": "03091034_z",
+            "Base_id": "03091034"
+          }
+        },
+        {
+          "sensor_id": "030911F1_x",
+          "span_id": "11BR",
+          "relative_distance": 744.57,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.990569,
+              "mean": 0.988337,
+              "std": 0.000744
+            }
+          },
+          "extra": {
+            "sensor_id": "2",
+            "flexural": "030911F1_y",
+            "torsional": "030911F1_z",
+            "Base_id": "030911F1"
+          }
+        },
+        {
+          "sensor_id": "03091006_x",
+          "span_id": "11BR",
+          "relative_distance": 744.57,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.025912,
+              "mean": 1.023353,
+              "std": 0.000853
+            }
+          },
+          "extra": {
+            "sensor_id": "55",
+            "flexural": "03091006_y",
+            "torsional": "03091006_z",
+            "Base_id": "03091006"
+          }
+        },
+        {
+          "sensor_id": "03091011_x",
+          "span_id": "11BR",
+          "relative_distance": 761.65,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.014972,
+              "mean": 1.012962,
+              "std": 0.00067
+            }
+          },
+          "extra": {
+            "sensor_id": "1",
+            "flexural": "03091011_y",
+            "torsional": "03091011_z",
+            "Base_id": "03091011"
+          }
+        },
+        {
+          "sensor_id": "03091003_x",
+          "span_id": "11BR",
+          "relative_distance": 761.65,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.013379,
+              "mean": 1.011282,
+              "std": 0.000699
+            }
+          },
+          "extra": {
+            "sensor_id": "54",
+            "flexural": "03091003_y",
+            "torsional": "03091003_z",
+            "Base_id": "03091003"
+          }
+        }
+      ]
+    },
+    "10BR": {
+      "span_id": "10BR",
+      "sensors": [
+        {
+          "sensor_id": "03091126_x",
+          "span_id": "10BR",
+          "relative_distance": 656.47,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.024256,
+              "mean": 1.022162,
+              "std": 0.000698
+            }
+          },
+          "extra": {
+            "sensor_id": "9",
+            "flexural": "03091126_y",
+            "torsional": "03091126_z",
+            "Base_id": "03091126"
+          }
+        },
+        {
+          "sensor_id": "0309112F_x",
+          "span_id": "10BR",
+          "relative_distance": 656.47,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.014127,
+              "mean": 1.011775,
+              "std": 0.000784
+            }
+          },
+          "extra": {
+            "sensor_id": "62",
+            "flexural": "0309112F_y",
+            "torsional": "0309112F_z",
+            "Base_id": "0309112F"
+          }
+        },
+        {
+          "sensor_id": "03091042_x",
+          "span_id": "10BR",
+          "relative_distance": 659.28,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0090679999999999,
+              "mean": 1.00701,
+              "std": 0.000686
+            }
+          },
+          "extra": {
+            "sensor_id": "8",
+            "flexural": "03091042_y",
+            "torsional": "03091042_z",
+            "Base_id": "03091042"
+          }
+        },
+        {
+          "sensor_id": "03091032_x",
+          "span_id": "10BR",
+          "relative_distance": 659.28,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.016201,
+              "mean": 1.013903,
+              "std": 0.000766
+            }
+          },
+          "extra": {
+            "sensor_id": "61",
+            "flexural": "03091032_y",
+            "torsional": "03091032_z",
+            "Base_id": "03091032"
+          }
+        },
+        {
+          "sensor_id": "030911EE_x",
+          "span_id": "10BR",
+          "relative_distance": 675.19,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.024985,
+              "mean": 1.022528,
+              "std": 0.000819
+            }
+          },
+          "extra": {
+            "sensor_id": "7",
+            "flexural": "030911EE_y",
+            "torsional": "030911EE_z",
+            "Base_id": "030911EE"
+          }
+        },
+        {
+          "sensor_id": "0309112A_x",
+          "span_id": "10BR",
+          "relative_distance": 675.19,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.001683,
+              "mean": 0.998959,
+              "std": 0.000908
+            }
+          },
+          "extra": {
+            "sensor_id": "60",
+            "flexural": "0309112A_y",
+            "torsional": "0309112A_z",
+            "Base_id": "0309112A"
+          }
+        },
+        {
+          "sensor_id": "0309102D_x",
+          "span_id": "10BR",
+          "relative_distance": 691.28,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.012892,
+              "mean": 1.010435,
+              "std": 0.000819
+            }
+          },
+          "extra": {
+            "sensor_id": "6",
+            "flexural": "0309102D_y",
+            "torsional": "0309102D_z",
+            "Base_id": "0309102D"
+          }
+        },
+        {
+          "sensor_id": "03091007_x",
+          "span_id": "10BR",
+          "relative_distance": 691.28,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0152169999999998,
+              "mean": 1.012298,
+              "std": 0.000973
+            }
+          },
+          "extra": {
+            "sensor_id": "59",
+            "flexural": "03091007_y",
+            "torsional": "03091007_z",
+            "Base_id": "03091007"
+          }
+        },
+        {
+          "sensor_id": "03091043_x",
+          "span_id": "10BR",
+          "relative_distance": 694.09,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.984273,
+              "mean": 0.982119,
+              "std": 0.000718
+            }
+          },
+          "extra": {
+            "sensor_id": "5",
+            "flexural": "03091043_y",
+            "torsional": "03091043_z",
+            "Base_id": "03091043"
+          }
+        },
+        {
+          "sensor_id": "030911EC_x",
+          "span_id": "10BR",
+          "relative_distance": 694.09,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.992649,
+              "mean": 0.990159,
+              "std": 0.00083
+            }
+          },
+          "extra": {
+            "sensor_id": "58",
+            "flexural": "030911EC_y",
+            "torsional": "030911EC_z",
+            "Base_id": "030911EC"
+          }
+        },
+        {
+          "sensor_id": "0309120A_z",
+          "span_id": "10BR",
+          "relative_distance": 709.9200000000001,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0352949999999999,
+              "mean": 1.034503,
+              "std": 0.000264
+            }
+          },
+          "extra": {
+            "sensor_id": "4",
+            "flexural": "0309120A_y",
+            "torsional": "0309120A_x",
+            "Base_id": "0309120A"
+          }
+        },
+        {
+          "sensor_id": "03091119_z",
+          "span_id": "10BR",
+          "relative_distance": 709.9200000000001,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.051857,
+              "mean": 1.05099,
+              "std": 0.000289
+            }
+          },
+          "extra": {
+            "sensor_id": "57",
+            "flexural": "03091119_y",
+            "torsional": "03091119_x",
+            "Base_id": "03091119"
+          }
+        }
+      ]
+    },
+    "9BR": {
+      "span_id": "9BR",
+      "sensors": [
+        {
+          "sensor_id": "03091205_x",
+          "span_id": "9BR",
+          "relative_distance": 588.4,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.005939,
+              "mean": 1.004292,
+              "std": 0.000549
+            }
+          },
+          "extra": {
+            "sensor_id": "13",
+            "flexural": "03091205_y",
+            "torsional": "03091205_z",
+            "Base_id": "03091205"
+          }
+        },
+        {
+          "sensor_id": "03091212_x",
+          "span_id": "9BR",
+          "relative_distance": 588.4,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.012709,
+              "mean": 1.01099,
+              "std": 0.000573
+            }
+          },
+          "extra": {
+            "sensor_id": "66",
+            "flexural": "03091212_y",
+            "torsional": "03091212_z",
+            "Base_id": "03091212"
+          }
+        },
+        {
+          "sensor_id": "03091114_x",
+          "span_id": "9BR",
+          "relative_distance": 605.96,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.010759,
+              "mean": 1.008845,
+              "std": 0.000638
+            }
+          },
+          "extra": {
+            "sensor_id": "12",
+            "flexural": "03091114_y",
+            "torsional": "03091114_z",
+            "Base_id": "03091114"
+          }
+        },
+        {
+          "sensor_id": "03091031_x",
+          "span_id": "9BR",
+          "relative_distance": 605.96,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.014133,
+              "mean": 1.012174,
+              "std": 0.000653
+            }
+          },
+          "extra": {
+            "sensor_id": "65",
+            "flexural": "03091031_y",
+            "torsional": "03091031_z",
+            "Base_id": "03091031"
+          }
+        },
+        {
+          "sensor_id": "03091024_x",
+          "span_id": "9BR",
+          "relative_distance": 623.08,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.992055,
+              "mean": 0.990453,
+              "std": 0.000534
+            }
+          },
+          "extra": {
+            "sensor_id": "11",
+            "flexural": "03091024_y",
+            "torsional": "03091024_z",
+            "Base_id": "03091024"
+          }
+        },
+        {
+          "sensor_id": "0309102F_x",
+          "span_id": "9BR",
+          "relative_distance": 623.08,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0092430000000001,
+              "mean": 1.007527,
+              "std": 0.000572
+            }
+          },
+          "extra": {
+            "sensor_id": "64",
+            "flexural": "0309102F_y",
+            "torsional": "0309102F_z",
+            "Base_id": "0309102F"
+          }
+        },
+        {
+          "sensor_id": "03091028_z",
+          "span_id": "9BR",
+          "relative_distance": 640.44,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0220479999999998,
+              "mean": 1.021289,
+              "std": 0.000253
+            }
+          },
+          "extra": {
+            "sensor_id": "10",
+            "flexural": "03091028_y",
+            "torsional": "03091028_x",
+            "Base_id": "03091028"
+          }
+        },
+        {
+          "sensor_id": "0309100B_z",
+          "span_id": "9BR",
+          "relative_distance": 640.44,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.014202,
+              "mean": 1.013272,
+              "std": 0.00031
+            }
+          },
+          "extra": {
+            "sensor_id": "63",
+            "flexural": "0309100B_y",
+            "torsional": "0309100B_x",
+            "Base_id": "0309100B"
+          }
+        }
+      ]
+    },
+    "8BR": {
+      "span_id": "8BR",
+      "sensors": [
+        {
+          "sensor_id": "0309120B_x",
+          "span_id": "8BR",
+          "relative_distance": 517.3199999999999,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0171649999999999,
+              "mean": 1.015275,
+              "std": 0.00063
+            }
+          },
+          "extra": {
+            "sensor_id": "19",
+            "flexural": "0309120B_y",
+            "torsional": "0309120B_z",
+            "Base_id": "0309120B"
+          }
+        },
+        {
+          "sensor_id": "0309101D_x",
+          "span_id": "8BR",
+          "relative_distance": 517.3199999999999,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.010078,
+              "mean": 1.007963,
+              "std": 0.000705
+            }
+          },
+          "extra": {
+            "sensor_id": "72",
+            "flexural": "0309101D_y",
+            "torsional": "0309101D_z",
+            "Base_id": "0309101D"
+          }
+        },
+        {
+          "sensor_id": "0309114D_x",
+          "span_id": "8BR",
+          "relative_distance": 520.13,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.020612,
+              "mean": 1.018707,
+              "std": 0.000635
+            }
+          },
+          "extra": {
+            "sensor_id": "18",
+            "flexural": "0309114D_y",
+            "torsional": "0309114D_z",
+            "Base_id": "0309114D"
+          }
+        },
+        {
+          "sensor_id": "03091002_x",
+          "span_id": "8BR",
+          "relative_distance": 520.13,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.025198,
+              "mean": 1.022864,
+              "std": 0.000778
+            }
+          },
+          "extra": {
+            "sensor_id": "71",
+            "flexural": "03091002_y",
+            "torsional": "03091002_z",
+            "Base_id": "03091002"
+          }
+        },
+        {
+          "sensor_id": "030911F3_x",
+          "span_id": "8BR",
+          "relative_distance": 536.25,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.997285,
+              "mean": 0.995053,
+              "std": 0.000744
+            }
+          },
+          "extra": {
+            "sensor_id": "17",
+            "flexural": "030911F3_y",
+            "torsional": "030911F3_z",
+            "Base_id": "030911F3"
+          }
+        },
+        {
+          "sensor_id": "03091112_x",
+          "span_id": "8BR",
+          "relative_distance": 536.25,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0172780000000001,
+              "mean": 1.014833,
+              "std": 0.000815
+            }
+          },
+          "extra": {
+            "sensor_id": "70",
+            "flexural": "03091112_y",
+            "torsional": "03091112_z",
+            "Base_id": "03091112"
+          }
+        },
+        {
+          "sensor_id": "030911F2_x",
+          "span_id": "8BR",
+          "relative_distance": 552.14,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.015693,
+              "mean": 1.013623,
+              "std": 0.00069
+            }
+          },
+          "extra": {
+            "sensor_id": "16",
+            "flexural": "030911F2_y",
+            "torsional": "030911F2_z",
+            "Base_id": "030911F2"
+          }
+        },
+        {
+          "sensor_id": "03091128_x",
+          "span_id": "8BR",
+          "relative_distance": 552.14,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.002497,
+              "mean": 0.999857,
+              "std": 0.00088
+            }
+          },
+          "extra": {
+            "sensor_id": "69",
+            "flexural": "03091128_y",
+            "torsional": "03091128_z",
+            "Base_id": "03091128"
+          }
+        },
+        {
+          "sensor_id": "030911E0_x",
+          "span_id": "8BR",
+          "relative_distance": 554.85,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.011701,
+              "mean": 1.009739,
+              "std": 0.000654
+            }
+          },
+          "extra": {
+            "sensor_id": "15",
+            "flexural": "030911E0_y",
+            "torsional": "030911E0_z",
+            "Base_id": "030911E0"
+          }
+        },
+        {
+          "sensor_id": "03091012_x",
+          "span_id": "8BR",
+          "relative_distance": 554.85,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.9997199999999999,
+              "mean": 0.997512,
+              "std": 0.000736
+            }
+          },
+          "extra": {
+            "sensor_id": "68",
+            "flexural": "03091012_y",
+            "torsional": "03091012_z",
+            "Base_id": "03091012"
+          }
+        },
+        {
+          "sensor_id": "03091047_z",
+          "span_id": "8BR",
+          "relative_distance": 570.98,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0260429999999998,
+              "mean": 1.025359,
+              "std": 0.000228
+            }
+          },
+          "extra": {
+            "sensor_id": "14",
+            "flexural": "03091047_y",
+            "torsional": "03091047_x",
+            "Base_id": "03091047"
+          }
+        },
+        {
+          "sensor_id": "03091111_z",
+          "span_id": "8BR",
+          "relative_distance": 570.98,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0167599999999999,
+              "mean": 1.015842,
+              "std": 0.000306
+            }
+          },
+          "extra": {
+            "sensor_id": "67",
+            "flexural": "03091111_y",
+            "torsional": "03091111_x",
+            "Base_id": "03091111"
+          }
+        }
+      ]
+    },
+    "7BR": {
+      "span_id": "7BR",
+      "sensors": [
+        {
+          "sensor_id": "0309120C_x",
+          "span_id": "7BR",
+          "relative_distance": 449.24,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.997874,
+              "mean": 0.996248,
+              "std": 0.000542
+            }
+          },
+          "extra": {
+            "sensor_id": "23",
+            "flexural": "0309120C_y",
+            "torsional": "0309120C_z",
+            "Base_id": "0309120C"
+          }
+        },
+        {
+          "sensor_id": "03091015_x",
+          "span_id": "7BR",
+          "relative_distance": 449.24,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.014868,
+              "mean": 1.013119,
+              "std": 0.000583
+            }
+          },
+          "extra": {
+            "sensor_id": "76",
+            "flexural": "03091015_y",
+            "torsional": "03091015_z",
+            "Base_id": "03091015"
+          }
+        },
+        {
+          "sensor_id": "03091033_x",
+          "span_id": "7BR",
+          "relative_distance": 467.09000000000003,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.997444,
+              "mean": 0.995449,
+              "std": 0.000665
+            }
+          },
+          "extra": {
+            "sensor_id": "22",
+            "flexural": "03091033_y",
+            "torsional": "03091033_z",
+            "Base_id": "03091033"
+          }
+        },
+        {
+          "sensor_id": "030911AE_x",
+          "span_id": "7BR",
+          "relative_distance": 467.09000000000003,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.007865,
+              "mean": 1.005792,
+              "std": 0.000691
+            }
+          },
+          "extra": {
+            "sensor_id": "75",
+            "flexural": "030911AE_y",
+            "torsional": "030911AE_z",
+            "Base_id": "030911AE"
+          }
+        },
+        {
+          "sensor_id": "03091208_x",
+          "span_id": "7BR",
+          "relative_distance": 483.86,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.015692,
+              "mean": 1.014078,
+              "std": 0.000538
+            }
+          },
+          "extra": {
+            "sensor_id": "21",
+            "flexural": "03091208_y",
+            "torsional": "03091208_z",
+            "Base_id": "03091208"
+          }
+        },
+        {
+          "sensor_id": "030911F4_x",
+          "span_id": "7BR",
+          "relative_distance": 483.86,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.998742,
+              "mean": 0.997083,
+              "std": 0.000553
+            }
+          },
+          "extra": {
+            "sensor_id": "74",
+            "flexural": "030911F4_y",
+            "torsional": "030911F4_z",
+            "Base_id": "030911F4"
+          }
+        },
+        {
+          "sensor_id": "03091110_z",
+          "span_id": "7BR",
+          "relative_distance": 501.28000000000003,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.045507,
+              "mean": 1.044772,
+              "std": 0.000245
+            }
+          },
+          "extra": {
+            "sensor_id": "20",
+            "flexural": "03091110_y",
+            "torsional": "03091110_x",
+            "Base_id": "03091110"
+          }
+        },
+        {
+          "sensor_id": "0309102E_z",
+          "span_id": "7BR",
+          "relative_distance": 501.28000000000003,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.984783,
+              "mean": 0.983796,
+              "std": 0.000329
+            }
+          },
+          "extra": {
+            "sensor_id": "73",
+            "flexural": "0309102E_y",
+            "torsional": "0309102E_x",
+            "Base_id": "0309102E"
+          }
+        }
+      ]
+    },
+    "6BR": {
+      "span_id": "6BR",
+      "sensors": [
+        {
+          "sensor_id": "030911D3_x",
+          "span_id": "6BR",
+          "relative_distance": 378.13,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.000517,
+              "mean": 0.998696,
+              "std": 0.000607
+            }
+          },
+          "extra": {
+            "sensor_id": "29",
+            "flexural": "030911D3_y",
+            "torsional": "030911D3_z",
+            "Base_id": "030911D3"
+          }
+        },
+        {
+          "sensor_id": "03091019_x",
+          "span_id": "6BR",
+          "relative_distance": 378.13,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.018515,
+              "mean": 1.016388,
+              "std": 0.000709
+            }
+          },
+          "extra": {
+            "sensor_id": "82",
+            "flexural": "03091019_y",
+            "torsional": "03091019_z",
+            "Base_id": "03091019"
+          }
+        },
+        {
+          "sensor_id": "03091202_x",
+          "span_id": "6BR",
+          "relative_distance": 380.84000000000003,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.005233,
+              "mean": 1.003352,
+              "std": 0.000627
+            }
+          },
+          "extra": {
+            "sensor_id": "28",
+            "flexural": "03091202_y",
+            "torsional": "03091202_z",
+            "Base_id": "03091202"
+          }
+        },
+        {
+          "sensor_id": "03091201_x",
+          "span_id": "6BR",
+          "relative_distance": 380.84000000000003,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0207799999999998,
+              "mean": 1.018614,
+              "std": 0.000722
+            }
+          },
+          "extra": {
+            "sensor_id": "81",
+            "flexural": "03091201_y",
+            "torsional": "03091201_z",
+            "Base_id": "03091201"
+          }
+        },
+        {
+          "sensor_id": "03091013_x",
+          "span_id": "6BR",
+          "relative_distance": 400.25999999999993,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.999687,
+              "mean": 0.997506,
+              "std": 0.000727
+            }
+          },
+          "extra": {
+            "sensor_id": "27",
+            "flexural": "03091013_y",
+            "torsional": "03091013_z",
+            "Base_id": "03091013"
+          }
+        },
+        {
+          "sensor_id": "0309120F_x",
+          "span_id": "6BR",
+          "relative_distance": 400.25999999999993,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.009443,
+              "mean": 1.007007,
+              "std": 0.000812
+            }
+          },
+          "extra": {
+            "sensor_id": "80",
+            "flexural": "0309120F_y",
+            "torsional": "0309120F_z",
+            "Base_id": "0309120F"
+          }
+        },
+        {
+          "sensor_id": "030911ED_x",
+          "span_id": "6BR",
+          "relative_distance": 412.96000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.987979,
+              "mean": 0.986128,
+              "std": 0.000617
+            }
+          },
+          "extra": {
+            "sensor_id": "26",
+            "flexural": "030911ED_y",
+            "torsional": "030911ED_z",
+            "Base_id": "030911ED"
+          }
+        },
+        {
+          "sensor_id": "0309114E_x",
+          "span_id": "6BR",
+          "relative_distance": 412.96000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.017295,
+              "mean": 1.014898,
+              "std": 0.000799
+            }
+          },
+          "extra": {
+            "sensor_id": "79",
+            "flexural": "0309114E_y",
+            "torsional": "0309114E_z",
+            "Base_id": "0309114E"
+          }
+        },
+        {
+          "sensor_id": "03091041_x",
+          "span_id": "6BR",
+          "relative_distance": 415.67,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.011264,
+              "mean": 1.009482,
+              "std": 0.000594
+            }
+          },
+          "extra": {
+            "sensor_id": "25",
+            "flexural": "03091041_y",
+            "torsional": "03091041_z",
+            "Base_id": "03091041"
+          }
+        },
+        {
+          "sensor_id": "03091204_x",
+          "span_id": "6BR",
+          "relative_distance": 415.67,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.008113,
+              "mean": 1.006079,
+              "std": 0.000678
+            }
+          },
+          "extra": {
+            "sensor_id": "78",
+            "flexural": "03091204_y",
+            "torsional": "03091204_z",
+            "Base_id": "03091204"
+          }
+        },
+        {
+          "sensor_id": "030910FA_z",
+          "span_id": "6BR",
+          "relative_distance": 431.8,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.958239,
+              "mean": 0.957576,
+              "std": 0.000221
+            }
+          },
+          "extra": {
+            "sensor_id": "24",
+            "flexural": "030910FA_y",
+            "torsional": "030910FA_z",
+            "Base_id": "030910FA"
+          }
+        },
+        {
+          "sensor_id": "03091045_z",
+          "span_id": "6BR",
+          "relative_distance": 431.8,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.058607,
+              "mean": 1.057743,
+              "std": 0.000288
+            }
+          },
+          "extra": {
+            "sensor_id": "77",
+            "flexural": "03091045_y",
+            "torsional": "03091045_x",
+            "Base_id": "03091045"
+          }
+        }
+      ]
+    },
+    "5BR": {
+      "span_id": "5BR",
+      "sensors": [
+        {
+          "sensor_id": "03091021_x",
+          "span_id": "5BR",
+          "relative_distance": 310.02000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.00519,
+              "mean": 1.003612,
+              "std": 0.000526
+            }
+          },
+          "extra": {
+            "sensor_id": "33",
+            "flexural": "03091021_y",
+            "torsional": "03091021_z",
+            "Base_id": "03091021"
+          }
+        },
+        {
+          "sensor_id": "0309102A_x",
+          "span_id": "5BR",
+          "relative_distance": 310.02000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0133569999999998,
+              "mean": 1.01168,
+              "std": 0.000559
+            }
+          },
+          "extra": {
+            "sensor_id": "86",
+            "flexural": "0309102A_y",
+            "torsional": "0309102A_z",
+            "Base_id": "0309102A"
+          }
+        },
+        {
+          "sensor_id": "030910F2_x",
+          "span_id": "5BR",
+          "relative_distance": 327.36,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0302799999999999,
+              "mean": 1.028255,
+              "std": 0.000675
+            }
+          },
+          "extra": {
+            "sensor_id": "32",
+            "flexural": "030910F2_y",
+            "torsional": "030910F2_z",
+            "Base_id": "030910F2"
+          }
+        },
+        {
+          "sensor_id": "0309100A_x",
+          "span_id": "5BR",
+          "relative_distance": 327.36,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0263360000000001,
+              "mean": 1.024248,
+              "std": 0.000696
+            }
+          },
+          "extra": {
+            "sensor_id": "85",
+            "flexural": "0309100A_y",
+            "torsional": "0309100A_z",
+            "Base_id": "0309100A"
+          }
+        },
+        {
+          "sensor_id": "030910F4_x",
+          "span_id": "5BR",
+          "relative_distance": 344.68,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.9912219999999999,
+              "mean": 0.989536,
+              "std": 0.000562
+            }
+          },
+          "extra": {
+            "sensor_id": "31",
+            "flexural": "030910F4_y",
+            "torsional": "030910F4_z",
+            "Base_id": "030910F4"
+          }
+        },
+        {
+          "sensor_id": "03091030_x",
+          "span_id": "5BR",
+          "relative_distance": 344.68,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.985511,
+              "mean": 0.983786,
+              "std": 0.000575
+            }
+          },
+          "extra": {
+            "sensor_id": "84",
+            "flexural": "03091030_y",
+            "torsional": "03091030_z",
+            "Base_id": "03091030"
+          }
+        },
+        {
+          "sensor_id": "03091016_z",
+          "span_id": "5BR",
+          "relative_distance": 362.1,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.023327,
+              "mean": 1.022559,
+              "std": 0.000256
+            }
+          },
+          "extra": {
+            "sensor_id": "30",
+            "flexural": "03091016_y",
+            "torsional": "03091016_x",
+            "Base_id": "03091016"
+          }
+        },
+        {
+          "sensor_id": "0309123B_z",
+          "span_id": "5BR",
+          "relative_distance": 362.1,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.03624,
+              "mean": 1.035241,
+              "std": 0.000333
+            }
+          },
+          "extra": {
+            "sensor_id": "83",
+            "flexural": "0309123B_y",
+            "torsional": "0309123B_x",
+            "Base_id": "0309123B"
+          }
+        }
+      ]
+    },
+    "4BR": {
+      "span_id": "4BR",
+      "sensors": [
+        {
+          "sensor_id": "03091118_x",
+          "span_id": "4BR",
+          "relative_distance": 238.95000000000005,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.025218,
+              "mean": 1.023193,
+              "std": 0.000675
+            }
+          },
+          "extra": {
+            "sensor_id": "39",
+            "flexural": "03091118_y",
+            "torsional": "03091118_z",
+            "Base_id": "03091118"
+          }
+        },
+        {
+          "sensor_id": "03091048_x",
+          "span_id": "4BR",
+          "relative_distance": 238.95000000000005,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.990332,
+              "mean": 0.988013,
+              "std": 0.000773
+            }
+          },
+          "extra": {
+            "sensor_id": "92",
+            "flexural": "03091048_y",
+            "torsional": "03091048_z",
+            "Base_id": "03091048"
+          }
+        },
+        {
+          "sensor_id": "03091115_x",
+          "span_id": "4BR",
+          "relative_distance": 241.65999999999997,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.019949,
+              "mean": 1.017891,
+              "std": 0.000686
+            }
+          },
+          "extra": {
+            "sensor_id": "38",
+            "flexural": "03091115_y",
+            "torsional": "03091115_z",
+            "Base_id": "03091115"
+          }
+        },
+        {
+          "sensor_id": "03091014_x",
+          "span_id": "4BR",
+          "relative_distance": 241.65999999999997,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.011462,
+              "mean": 1.00908,
+              "std": 0.000794
+            }
+          },
+          "extra": {
+            "sensor_id": "91",
+            "flexural": "03091014_y",
+            "torsional": "03091014_z",
+            "Base_id": "03091014"
+          }
+        },
+        {
+          "sensor_id": "03091046_x",
+          "span_id": "4BR",
+          "relative_distance": 257.89,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.996578,
+              "mean": 0.994451,
+              "std": 0.000709
+            }
+          },
+          "extra": {
+            "sensor_id": "37",
+            "flexural": "03091046_y",
+            "torsional": "03091046_z",
+            "Base_id": "03091046"
+          }
+        },
+        {
+          "sensor_id": "03091049_x",
+          "span_id": "4BR",
+          "relative_distance": 257.89,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.033238,
+              "mean": 1.030847,
+              "std": 0.000797
+            }
+          },
+          "extra": {
+            "sensor_id": "90",
+            "flexural": "03091049_y",
+            "torsional": "03091049_z",
+            "Base_id": "03091049"
+          }
+        },
+        {
+          "sensor_id": "03091132_x",
+          "span_id": "4BR",
+          "relative_distance": 273.77,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0089229999999998,
+              "mean": 1.006973,
+              "std": 0.00065
+            }
+          },
+          "extra": {
+            "sensor_id": "36",
+            "flexural": "03091132_y",
+            "torsional": "03091132_z",
+            "Base_id": "03091132"
+          }
+        },
+        {
+          "sensor_id": "03091113_x",
+          "span_id": "4BR",
+          "relative_distance": 273.77,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.997838,
+              "mean": 0.99551,
+              "std": 0.000776
+            }
+          },
+          "extra": {
+            "sensor_id": "89",
+            "flexural": "03091113_y",
+            "torsional": "03091113_z",
+            "Base_id": "03091113"
+          }
+        },
+        {
+          "sensor_id": "030910F7_x",
+          "span_id": "4BR",
+          "relative_distance": 276.48,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0190649999999999,
+              "mean": 1.017169,
+              "std": 0.000632
+            }
+          },
+          "extra": {
+            "sensor_id": "35",
+            "flexural": "030910F7_y",
+            "torsional": "030910F7_z",
+            "Base_id": "030910F7"
+          }
+        },
+        {
+          "sensor_id": "03091008_x",
+          "span_id": "4BR",
+          "relative_distance": 276.48,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.9936429999999999,
+              "mean": 0.99157,
+              "std": 0.000691
+            }
+          },
+          "extra": {
+            "sensor_id": "88",
+            "flexural": "03091008_y",
+            "torsional": "03091008_z",
+            "Base_id": "03091008"
+          }
+        },
+        {
+          "sensor_id": "03091127_z",
+          "span_id": "4BR",
+          "relative_distance": 292.61,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.953914,
+              "mean": 0.953221,
+              "std": 0.000231
+            }
+          },
+          "extra": {
+            "sensor_id": "34",
+            "flexural": "03091127_y",
+            "torsional": "03091127_x",
+            "Base_id": "03091127"
+          }
+        },
+        {
+          "sensor_id": "030911DF_z",
+          "span_id": "4BR",
+          "relative_distance": 292.61,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0310540000000001,
+              "mean": 1.030205,
+              "std": 0.000283
+            }
+          },
+          "extra": {
+            "sensor_id": "87",
+            "flexural": "030911DF_y",
+            "torsional": "030911DF_x",
+            "Base_id": "030911DF"
+          }
+        }
+      ]
+    },
+    "3BR": {
+      "span_id": "3BR",
+      "sensors": [
+        {
+          "sensor_id": "0309120D_x",
+          "span_id": "3BR",
+          "relative_distance": 170.90999999999997,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.003002,
+              "mean": 1.001193,
+              "std": 0.000603
+            }
+          },
+          "extra": {
+            "sensor_id": "43",
+            "flexural": "0309120D_y",
+            "torsional": "0309120D_z",
+            "Base_id": "0309120D"
+          }
+        },
+        {
+          "sensor_id": "03091207_x",
+          "span_id": "3BR",
+          "relative_distance": 170.90999999999997,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.029451,
+              "mean": 1.02754,
+              "std": 0.000637
+            }
+          },
+          "extra": {
+            "sensor_id": "96",
+            "flexural": "03091207_y",
+            "torsional": "03091207_z",
+            "Base_id": "03091207"
+          }
+        },
+        {
+          "sensor_id": "03091129_x",
+          "span_id": "3BR",
+          "relative_distance": 188.06000000000006,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.9957550000000001,
+              "mean": 0.993511,
+              "std": 0.000748
+            }
+          },
+          "extra": {
+            "sensor_id": "42",
+            "flexural": "03091129_y",
+            "torsional": "03091129_z",
+            "Base_id": "03091129"
+          }
+        },
+        {
+          "sensor_id": "03091131_x",
+          "span_id": "3BR",
+          "relative_distance": 188.06000000000006,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.022982,
+              "mean": 1.020669,
+              "std": 0.000771
+            }
+          },
+          "extra": {
+            "sensor_id": "95",
+            "flexural": "03091131_y",
+            "torsional": "03091131_z",
+            "Base_id": "03091131"
+          }
+        },
+        {
+          "sensor_id": "030910F9_x",
+          "span_id": "3BR",
+          "relative_distance": 205.56000000000006,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.993074,
+              "mean": 0.991289,
+              "std": 0.000595
+            }
+          },
+          "extra": {
+            "sensor_id": "41",
+            "flexural": "030910F9_y",
+            "torsional": "030910F9_z",
+            "Base_id": "030910F9"
+          }
+        },
+        {
+          "sensor_id": "030911E5_x",
+          "span_id": "3BR",
+          "relative_distance": 205.56000000000006,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.008576,
+              "mean": 1.006713,
+              "std": 0.000621
+            }
+          },
+          "extra": {
+            "sensor_id": "94",
+            "flexural": "030911E5_y",
+            "torsional": "030911E5_z",
+            "Base_id": "030911E5"
+          }
+        },
+        {
+          "sensor_id": "03091117_z",
+          "span_id": "3BR",
+          "relative_distance": 222.89999999999998,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0181099999999998,
+              "mean": 1.017291,
+              "std": 0.000273
+            }
+          },
+          "extra": {
+            "sensor_id": "40",
+            "flexural": "03091117_y",
+            "torsional": "03091117_x",
+            "Base_id": "03091117"
+          }
+        },
+        {
+          "sensor_id": "0309113F_z",
+          "span_id": "3BR",
+          "relative_distance": 222.89999999999998,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.038927,
+              "mean": 1.037988,
+              "std": 0.000313
+            }
+          },
+          "extra": {
+            "sensor_id": "93",
+            "flexural": "0309113F_y",
+            "torsional": "0309113F_x",
+            "Base_id": "0309113F"
+          }
+        }
+      ]
+    },
+    "2BR": {
+      "span_id": "2BR",
+      "sensors": [
+        {
+          "sensor_id": "03091153_x",
+          "span_id": "2BR",
+          "relative_distance": 96.46000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0150579999999998,
+              "mean": 1.012865,
+              "std": 0.000731
+            }
+          },
+          "extra": {
+            "sensor_id": "48",
+            "flexural": "03091153_y",
+            "torsional": "03091153_z",
+            "Base_id": "03091153"
+          }
+        },
+        {
+          "sensor_id": "0309101F_x",
+          "span_id": "2BR",
+          "relative_distance": 96.46000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0168599999999999,
+              "mean": 1.014403,
+              "std": 0.000819
+            }
+          },
+          "extra": {
+            "sensor_id": "101",
+            "flexural": "0309101F_y",
+            "torsional": "0309101F_z",
+            "Base_id": "0309101F"
+          }
+        },
+        {
+          "sensor_id": "03091010_x",
+          "span_id": "2BR",
+          "relative_distance": 99.75,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.997491,
+              "mean": 0.995364,
+              "std": 0.000709
+            }
+          },
+          "extra": {
+            "sensor_id": "49",
+            "flexural": "03091010_y",
+            "torsional": "03091010_z",
+            "Base_id": "03091010"
+          }
+        },
+        {
+          "sensor_id": "03091203_x",
+          "span_id": "2BR",
+          "relative_distance": 99.75,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0038060000000002,
+              "mean": 1.0011,
+              "std": 0.000902
+            }
+          },
+          "extra": {
+            "sensor_id": "102",
+            "flexural": "03091203_y",
+            "torsional": "03091203_z",
+            "Base_id": "03091203"
+          }
+        },
+        {
+          "sensor_id": "03091210_x",
+          "span_id": "2BR",
+          "relative_distance": 118.69000000000005,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.003775,
+              "mean": 1.001366,
+              "std": 0.000803
+            }
+          },
+          "extra": {
+            "sensor_id": "47",
+            "flexural": "03091210_y",
+            "torsional": "03091210_z",
+            "Base_id": "03091210"
+          }
+        },
+        {
+          "sensor_id": "03091005_x",
+          "span_id": "2BR",
+          "relative_distance": 118.69000000000005,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.008445,
+              "mean": 1.005781,
+              "std": 0.000888
+            }
+          },
+          "extra": {
+            "sensor_id": "100",
+            "flexural": "03091005_y",
+            "torsional": "03091005_z",
+            "Base_id": "03091005"
+          }
+        },
+        {
+          "sensor_id": "0309120E_x",
+          "span_id": "2BR",
+          "relative_distance": 134.58000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.9992559999999999,
+              "mean": 0.997126,
+              "std": 0.00071
+            }
+          },
+          "extra": {
+            "sensor_id": "46",
+            "flexural": "0309120E_y",
+            "torsional": "0309120E_z",
+            "Base_id": "0309120E"
+          }
+        },
+        {
+          "sensor_id": "030911D2_x",
+          "span_id": "2BR",
+          "relative_distance": 134.58000000000004,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.023065,
+              "mean": 1.020641,
+              "std": 0.000808
+            }
+          },
+          "extra": {
+            "sensor_id": "99",
+            "flexural": "030911D2_y",
+            "torsional": "030911D2_z",
+            "Base_id": "030911D2"
+          }
+        },
+        {
+          "sensor_id": "03091211_x",
+          "span_id": "2BR",
+          "relative_distance": 137.28999999999996,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0354349999999999,
+              "mean": 1.033299,
+              "std": 0.000712
+            }
+          },
+          "extra": {
+            "sensor_id": "45",
+            "flexural": "03091211_y",
+            "torsional": "03091211_z",
+            "Base_id": "03091211"
+          }
+        },
+        {
+          "sensor_id": "03091036_x",
+          "span_id": "2BR",
+          "relative_distance": 137.28999999999996,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.025356,
+              "mean": 1.023064,
+              "std": 0.000764
+            }
+          },
+          "extra": {
+            "sensor_id": "98",
+            "flexural": "03091036_y",
+            "torsional": "03091036_z",
+            "Base_id": "03091036"
+          }
+        },
+        {
+          "sensor_id": "03091035_z",
+          "span_id": "2BR",
+          "relative_distance": 153.42000000000007,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.959654,
+              "mean": 0.95888,
+              "std": 0.000258
+            }
+          },
+          "extra": {
+            "sensor_id": "44",
+            "flexural": "03091035_y",
+            "torsional": "03091035_x",
+            "Base_id": "03091035"
+          }
+        },
+        {
+          "sensor_id": "03091017_z",
+          "span_id": "2BR",
+          "relative_distance": 153.42000000000007,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0140989999999999,
+              "mean": 1.013064,
+              "std": 0.000345
+            }
+          },
+          "extra": {
+            "sensor_id": "97",
+            "flexural": "03091017_y",
+            "torsional": "03091017_x",
+            "Base_id": "03091017"
+          }
+        }
+      ]
+    },
+    "1BR": {
+      "span_id": "1BR",
+      "sensors": [
+        {
+          "sensor_id": "0309100F_x",
+          "span_id": "1BR",
+          "relative_distance": 32.36,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0139960000000001,
+              "mean": 1.011983,
+              "std": 0.000671
+            }
+          },
+          "extra": {
+            "sensor_id": "53",
+            "flexural": "0309100F_y",
+            "torsional": "0309100F_z",
+            "Base_id": "0309100F"
+          }
+        },
+        {
+          "sensor_id": "030911FF_x",
+          "span_id": "1BR",
+          "relative_distance": 32.36,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.016897,
+              "mean": 1.014746,
+              "std": 0.000717
+            }
+          },
+          "extra": {
+            "sensor_id": "106",
+            "flexural": "030911FF_y",
+            "torsional": "030911FF_z",
+            "Base_id": "030911FF"
+          }
+        },
+        {
+          "sensor_id": "030910F6_x",
+          "span_id": "1BR",
+          "relative_distance": 49.5,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.992862,
+              "mean": 0.990552,
+              "std": 0.00077
+            }
+          },
+          "extra": {
+            "sensor_id": "52",
+            "flexural": "030910F6_y",
+            "torsional": "030910F6_z",
+            "Base_id": "030910F6"
+          }
+        },
+        {
+          "sensor_id": "030911EF_x",
+          "span_id": "1BR",
+          "relative_distance": 49.5,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.008732,
+              "mean": 1.006224,
+              "std": 0.000836
+            }
+          },
+          "extra": {
+            "sensor_id": "105",
+            "flexural": "030911EF_y",
+            "torsional": "030911EF_z",
+            "Base_id": "030911EF"
+          }
+        },
+        {
+          "sensor_id": "0309101E_x",
+          "span_id": "1BR",
+          "relative_distance": 66.68000000000006,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.0051320000000001,
+              "mean": 1.003146,
+              "std": 0.000662
+            }
+          },
+          "extra": {
+            "sensor_id": "51",
+            "flexural": "0309101E_y",
+            "torsional": "0309101E_z",
+            "Base_id": "0309101E"
+          }
+        },
+        {
+          "sensor_id": "03091200_x",
+          "span_id": "1BR",
+          "relative_distance": 66.68000000000006,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 0.992634,
+              "mean": 0.990567,
+              "std": 0.000689
+            }
+          },
+          "extra": {
+            "sensor_id": "104",
+            "flexural": "03091200_y",
+            "torsional": "03091200_z",
+            "Base_id": "03091200"
+          }
+        },
+        {
+          "sensor_id": "03091018_z",
+          "span_id": "1BR",
+          "relative_distance": 83.90999999999997,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.005011,
+              "mean": 1.004216,
+              "std": 0.000265
+            }
+          },
+          "extra": {
+            "sensor_id": "50",
+            "flexural": "03091018_y",
+            "torsional": "03091018_x",
+            "Base_id": "03091018"
+          }
+        },
+        {
+          "sensor_id": "03091155_z",
+          "span_id": "1BR",
+          "relative_distance": 83.90999999999997,
+          "side": "",
+          "axis": "",
+          "thresholds": {
+            "3": {
+              "sigma": 3,
+              "threshold": 1.045409,
+              "mean": 1.044404,
+              "std": 0.000335
+            }
+          },
+          "extra": {
+            "sensor_id": "103",
+            "flexural": "03091155_y",
+            "torsional": "03091155_x",
+            "Base_id": "03091155"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -13,9 +13,8 @@ Core Idea:
     using known inter-sensor distances.
 
 Pipeline:
-    1. Load & preprocess: Read sensor data, remove DC offset, apply
-       threshold-based window filter (zeros out inactive regions)
-    2. Event detection: Detect high-amplitude vibration events per sensor
+    1. Load data: Read sensor data, remove DC offset
+    2. Event extraction: Threshold-triggered windowed extraction per sensor
     3. Event correlation: Match events across consecutive sensors using
        time windows derived from plausible speed ranges
     4. Speed estimation: Compute speed = distance / time_delay
@@ -57,68 +56,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import matplotlib
-#from src.research.unsupervised_event_dtetction import manual_threshold
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 import polars as pl
-from scipy.ndimage import uniform_filter1d
-
-
-# =============================================================================
-# THRESHOLD-BASED WINDOW FILTER
-# =============================================================================
-
-def _get_filtered_mask(
-    sensor_series: pd.Series,
-    threshold: float,
-    sample_period: int,
-    pre_trigger_samples: int = 0,
-) -> np.ndarray:
-    """
-    Return a boolean mask.
-    True  → sample is inside an active window
-    False → sample is outside every active window.
-
-    For each sample whose absolute value exceeds `threshold`, a window of
-    `sample_period` samples is opened (extended if further crossings occur).
-    Optionally includes `pre_trigger_samples` before the trigger.
-
-    Parameters
-    ----------
-    sensor_series : pd.Series
-        1-D signal values.
-    threshold : float
-        Amplitude threshold to open a window.
-    sample_period : int
-        Number of samples to extend the window after the last crossing.
-    pre_trigger_samples : int
-        Samples before the trigger to include in the window.
-
-    Returns
-    -------
-    np.ndarray (bool)
-        Boolean mask of the same length as sensor_series.
-    """
-    n    = len(sensor_series)
-    mask = np.zeros(n, dtype=bool)
-    vals = sensor_series.to_numpy()
-
-    i = 0
-    while i < n:
-        if np.abs(vals[i]) >= threshold:
-            start = max(i - pre_trigger_samples, 0)
-            end   = min(i + sample_period, n)
-            while i < end:
-                if np.abs(vals[i]) >= threshold:
-                    end = min(i + sample_period, n)
-                i += 1
-            mask[start:end] = True
-        else:
-            i += 1
-    return mask
 
 
 # =============================================================================
@@ -133,29 +76,22 @@ class Config:
     sampling_rate_hz: float = 100.0       # 10ms interval = 100 Hz
     dt: float = 0.01                      # seconds per sample
 
-    # --- Preprocessing (threshold-based window filter) ---
-    filter_threshold: float = 0.0005      # amplitude threshold to open an active window
-    filter_sample_period: int = 300       # samples to extend window after last crossing
-    filter_pre_trigger: int = 50           # samples before trigger to include in window
+    # --- Event Extraction (threshold-triggered windowing) ---
+    # Amplitude threshold: when |signal| crosses this, an event window opens
+    event_threshold: float = 0.001
+    # Duration of the event window after trigger (seconds)
+    event_window_sec: float = 20.0
+    # Pre-trigger time to include before the first threshold crossing (seconds)
+    event_pre_trigger_sec: float = 5.0
 
-    # --- Event Detection ---
-    # Envelope smoothing window (samples) for energy computation
-    envelope_window: int = 100             # 0.5s at 100Hz
-    # Threshold = mean + threshold_sigma * std of the envelope
-    threshold_sigma: float = 3.0
-    # Minimum event duration in seconds (reject short spikes)
+    # --- Minimum / maximum event duration for filtering ---
     min_event_duration_s: float = 0.3
-    # Maximum event duration in seconds (reject unrealistically long events)
-    max_event_duration_s: float = 10.0
-    # Minimum gap between separate events (seconds) - merge closer ones
-    min_event_gap_s: float = 0.5
-    # Use absolute value of signal for envelope (True) or squared (False)
-    use_abs_envelope: bool = True
+    max_event_duration_s: float = 50.0
 
     # --- Event Correlation ---
     # Plausible vehicle speed range (km/h) for computing search windows
     speed_min_kmh: float = 50.0
-    speed_max_kmh: float = 100.0
+    speed_max_kmh: float = 150.0
     # Maximum allowed shape dissimilarity (normalized cross-correlation < this => reject)
     min_shape_similarity: float = 0.1
     # Maximum allowed amplitude ratio difference for matching
@@ -172,32 +108,27 @@ class Config:
     # Sensor order follows vehicle travel direction
     # IMPORTANT: User must provide actual inter-sensor distances
     sensor_groups: dict = field(default_factory=lambda: {
-        # campate1a: sensors 106 -> 105 -> 104 (3 accelerometers in x-direction)
         'campate1a': {
             'sensors': ['030911FF_x', '030911EF_x', '03091200_x'],
-            'distances': None,   # meters between consecutive sensors - USER MUST SET
+            'distances': None,
             'description': 'Campate 1a: sensors 106→105→104'
         },
-        # campate1a_extended: includes z-direction and additional sensors
         'campate1a_ext': {
             'sensors': ['030911FF_x', '030911EF_x', '03091200_x',
                         '03091155_z', '03091207_x', '03091119_z'],
             'distances': None,
             'description': 'Campate 1a extended: 6 sensors'
         },
-        # campate1b: sensors 53 -> 52 -> 51
         'campate1b': {
             'sensors': ['0309100F_x', '030910F6_x', '0309101E_x'],
             'distances': None,
             'description': 'Campate 1b: sensors 53→52→51'
         },
-        # campate2: sensors 99, 100, 101
         'campate2': {
             'sensors': ['030911D2_x', '03091005_x', '0309101F_x'],
             'distances': None,
             'description': 'Campate 2: sensors 99, 100, 101'
         },
-        # All campate sensors spread across bridge
         'all_campate': {
             'sensors': ['030911FF_x', '03091017_z', '03091113_x',
                         '0309123B_z', '03091111_z', '03091003_x'],
@@ -267,75 +198,7 @@ def load_data(filepath: str, sensor_columns: list[str],
 
 
 # =============================================================================
-# PREPROCESSING
-# =============================================================================
-
-def preprocess_signal(raw: np.ndarray, config: Config) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Preprocess a single sensor signal:
-      1. Remove DC offset (mean subtraction)
-      2. Handle NaNs by linear interpolation
-      3. Apply threshold-based window filter (zeros out inactive regions)
-      4. Compute smoothed envelope for event detection
-
-    Parameters
-    ----------
-    raw : np.ndarray
-        Raw acceleration values.
-    config : Config
-        Pipeline configuration.
-
-    Returns
-    -------
-    filtered : np.ndarray
-        Threshold-filtered signal (DC removed, inactive regions zeroed).
-    envelope : np.ndarray
-        Smoothed amplitude envelope for event detection.
-    """
-    # 1. Remove DC offset
-    centered = raw - np.nanmean(raw)
-
-    # 2. Handle NaNs by linear interpolation
-    nans = np.isnan(centered)
-    if nans.any():
-        not_nan = ~nans
-        if not_nan.sum() > 10:
-            centered[nans] = np.interp(
-                np.where(nans)[0],
-                np.where(not_nan)[0],
-                centered[not_nan]
-            )
-        else:
-            centered[nans] = 0.0
-
-    # 3. Threshold-based window filter
-    sensor_series = pd.Series(centered)
-    mask = _get_filtered_mask(
-        sensor_series,
-        threshold=config.filter_threshold,
-        sample_period=config.filter_sample_period,
-        pre_trigger_samples=config.filter_pre_trigger,
-    )
-    filtered = centered.copy()
-    filtered[~mask] = 0.0
-
-    filtering_ratio = mask.sum() / len(mask)
-    print(f"    Filter active ratio: {filtering_ratio * 100:.2f}%  "
-          f"({mask.sum()}/{len(mask)} samples)")
-
-    # 4. Compute envelope
-    if config.use_abs_envelope:
-        env_raw = np.abs(filtered)
-    else:
-        env_raw = filtered ** 2
-
-    envelope = uniform_filter1d(env_raw, size=config.envelope_window)
-
-    return filtered, envelope
-
-
-# =============================================================================
-# EVENT DETECTION
+# EVENT EXTRACTION (simplified threshold-triggered windowing)
 # =============================================================================
 
 @dataclass
@@ -344,129 +207,177 @@ class VibrationEvent:
     sensor: str
     start_idx: int             # sample index of event start
     end_idx: int               # sample index of event end
-    peak_idx: int              # sample index of peak amplitude
+    peak_idx: int              # sample index of peak amplitude (within full signal)
     start_time: float          # seconds from window start
     end_time: float            # seconds from window start
     peak_time: float           # seconds from window start
     peak_amplitude: float      # peak absolute amplitude
-    energy: float              # integrated envelope energy
+    energy: float              # integrated |signal| energy over the event
     duration: float            # seconds
+    trigger_times: list = field(default_factory=list, repr=False)
     waveform: np.ndarray = field(repr=False, default_factory=lambda: np.array([]))
 
 
-def detect_events(filtered: np.ndarray, envelope: np.ndarray,
-                  sensor_name: str, config: Config) -> list[VibrationEvent]:
+def extract_events(signal: np.ndarray, dt: float, threshold: float,
+                   window_sec: float = 5.0, pre_trigger_sec: float = 0.5) -> list[dict]:
     """
-    Detect vibration events in a single sensor signal using adaptive thresholding.
+    Extract event windows from raw signal using threshold trigger.
 
-    Method:
-        1. Compute threshold = mean(envelope) + sigma * std(envelope)
-        2. Find contiguous regions above threshold
-        3. Merge events closer than min_event_gap
-        4. Filter by duration constraints
-        5. Extract peak info and waveform
+    Scan |signal|; when it crosses threshold, collect window_sec of data.
+    If threshold is crossed again before window ends, extend the window.
+    Include pre_trigger_sec before the first trigger.
 
     Parameters
     ----------
-    filtered : np.ndarray
-        Threshold-filtered signal.
-    envelope : np.ndarray
-        Smoothed amplitude envelope.
+    signal : np.ndarray
+        Input signal (DC-removed).
+    dt : float
+        Sampling period in seconds.
+    threshold : float
+        Amplitude threshold to trigger an event window.
+    window_sec : float
+        Duration of event window after trigger (seconds).
+    pre_trigger_sec : float
+        Time before trigger to include in the window (seconds).
+
+    Returns
+    -------
+    list[dict]
+        Each dict contains: 'signal', 'start_idx', 'end_idx',
+        'start_time', 'end_time', 'trigger_times'.
+    """
+    n = len(signal)
+    window_samples = int(window_sec / dt)
+    pre_trigger_samples = int(pre_trigger_sec / dt)
+
+    abs_signal = np.abs(signal)
+    events = []
+    i = 0
+
+    while i < n:
+        if abs_signal[i] >= threshold:
+            trigger_times = [i * dt]
+            start = max(0, i - pre_trigger_samples)
+            end = min(n, i + window_samples)
+
+            # Extend window if re-triggered before it closes
+            j = i + 1
+            while j < end and j < n:
+                if abs_signal[j] >= threshold:
+                    new_end = min(n, j + window_samples)
+                    if new_end > end:
+                        trigger_times.append(j * dt)
+                        end = new_end
+                j += 1
+
+            events.append({
+                'signal': signal[start:end].copy(),
+                'start_idx': start,
+                'end_idx': end,
+                'start_time': start * dt,
+                'end_time': end * dt,
+                'trigger_times': trigger_times,
+            })
+            i = end  # jump past this event
+        else:
+            i += 1
+
+    return events
+
+
+def extract_and_build_events(
+    signal: np.ndarray,
+    sensor_name: str,
+    config: Config,
+) -> tuple[list[VibrationEvent], np.ndarray]:
+    """
+    Run extract_events on a DC-removed signal, then convert the raw event
+    dicts into VibrationEvent dataclass instances with computed peak info,
+    energy, and duration filtering.
+
+    Also produces a windowed copy of the signal where everything outside
+    detected event windows is zeroed out.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        DC-removed signal (mean-subtracted).
     sensor_name : str
-        Name of this sensor (for labeling).
+        Sensor identifier for labeling.
     config : Config
         Pipeline configuration.
 
     Returns
     -------
-    list[VibrationEvent]
-        Detected events sorted by peak time.
+    tuple[list[VibrationEvent], np.ndarray]
+        - Filtered and enriched events, sorted by peak_time.
+        - Windowed signal: zeros everywhere except inside event windows.
     """
     dt = config.dt
     min_samples = int(config.min_event_duration_s / dt)
     max_samples = int(config.max_event_duration_s / dt)
-    min_gap_samples = int(config.min_event_gap_s / dt)
 
-    # Adaptive threshold
-    env_mean = np.mean(envelope)
-    env_std = np.std(envelope)
-    threshold = env_mean + config.threshold_sigma * env_std
-    manual_threshold = config.filter_threshold
-    # Find above-threshold regions
-    above = envelope > manual_threshold
-    if not above.any():
-        return []
+    raw_events = extract_events(
+        signal, dt,
+        threshold=config.event_threshold,
+        window_sec=config.event_window_sec,
+        pre_trigger_sec=config.event_pre_trigger_sec,
+    )
 
-    # Find contiguous segments
-    diff = np.diff(above.astype(int))
-    starts = np.where(diff == 1)[0] + 1
-    ends = np.where(diff == -1)[0] + 1
+    print(f"    {sensor_name}: {len(raw_events)} raw event windows extracted")
 
-    # Handle edge cases
-    if above[0]:
-        starts = np.insert(starts, 0, 0)
-    if above[-1]:
-        ends = np.append(ends, len(above))
+    # Build a zeroed-out copy: keep signal only inside event windows
+    windowed_signal = np.zeros_like(signal)
+    for ev in raw_events:
+        s, e = ev['start_idx'], ev['end_idx']
+        windowed_signal[s:e] = signal[s:e]
 
-    if len(starts) == 0 or len(ends) == 0:
-        return []
+    active_samples = sum(ev['end_idx'] - ev['start_idx'] for ev in raw_events)
+    print(f"    {sensor_name}: windowed signal active ratio: "
+          f"{active_samples / len(signal) * 100:.2f}%  "
+          f"({active_samples}/{len(signal)} samples)")
 
-    # Pair starts and ends
-    n_events = min(len(starts), len(ends))
-    segments = list(zip(starts[:n_events], ends[:n_events]))
-    print(n_events)
-    print(segments)
+    vibration_events = []
+    for ev in raw_events:
+        duration_samples = ev['end_idx'] - ev['start_idx']
 
-    # Merge close segments
-    merged = []
-    if segments:
-        current_start, current_end = segments[0]
-        for s, e in segments[1:]:
-            if s - current_end < min_gap_samples:
-                current_end = e  # merge
-            else:
-                merged.append((current_start, current_end))
-                current_start, current_end = s, e
-        merged.append((current_start, current_end))
-
-    # Build events with duration filtering
-    events = []
-    for s, e in merged:
-        duration_samples = e - s
+        # Duration filtering
         if duration_samples < min_samples:
             continue
         if duration_samples > max_samples:
             continue
 
-        # Find peak within this event
-        event_env = envelope[s:e]
-        peak_local = np.argmax(event_env)
-        peak_idx = s + peak_local
+        seg = ev['signal']  # waveform within the event window
+        s_idx = ev['start_idx']
+        e_idx = ev['end_idx']
 
-        # Extract waveform (with small padding)
-        pad = int(0.1 / dt)  # 100ms padding
-        wave_start = max(0, s - pad)
-        wave_end = min(len(filtered), e + pad)
-        waveform = filtered[wave_start:wave_end].copy()
+        # Peak: index of max |signal| within the event, in full-signal coordinates
+        peak_local = np.argmax(np.abs(seg))
+        peak_idx = s_idx + peak_local
+        peak_amplitude = np.abs(seg[peak_local])
 
-        event = VibrationEvent(
+        # Energy: sum of |signal| over the event
+        energy = np.sum(np.abs(seg)) * dt
+
+        vibration_events.append(VibrationEvent(
             sensor=sensor_name,
-            start_idx=s,
-            end_idx=e,
+            start_idx=s_idx,
+            end_idx=e_idx,
             peak_idx=peak_idx,
-            start_time=s * dt,
-            end_time=e * dt,
+            start_time=s_idx * dt,
+            end_time=e_idx * dt,
             peak_time=peak_idx * dt,
-            peak_amplitude=np.abs(filtered[peak_idx]),
-            energy=np.sum(envelope[s:e]) * dt,
-            duration=(e - s) * dt,
-            waveform=waveform
-        )
-        events.append(event)
+            peak_amplitude=peak_amplitude,
+            energy=energy,
+            duration=(e_idx - s_idx) * dt,
+            trigger_times=ev['trigger_times'],
+            waveform=seg,
+        ))
 
-    events.sort(key=lambda ev: ev.peak_time)
-    print(n_events)
-    return events
+    vibration_events.sort(key=lambda v: v.peak_time)
+    print(f"    {sensor_name}: {len(vibration_events)} events after duration filter "
+          f"[{config.min_event_duration_s}s, {config.max_event_duration_s}s]")
+    return vibration_events, windowed_signal
 
 
 # =============================================================================
@@ -490,10 +401,7 @@ def compute_time_delay_cross_correlation(
     max_lag_samples: int, dt: float
 ) -> tuple[float, float]:
     """
-    Compute time delay between two signals using cross-correlation.
-
-    Uses normalized cross-correlation to find the lag that maximizes
-    similarity. This is more robust than simple peak-to-peak timing.
+    Compute time delay between two signals using normalized cross-correlation.
 
     Parameters
     ----------
@@ -511,11 +419,7 @@ def compute_time_delay_cross_correlation(
     corr_score : float
         Normalized correlation score at best lag (0-1).
     """
-    # Normalize signals
-    # s1 = sig1 - np.mean(sig1)
-    # s2 = sig2 - np.mean(sig2)
-
-    s1=sig1
+    s1 = sig1
     s2 = sig2
 
     norm1 = np.linalg.norm(s1)
@@ -549,20 +453,16 @@ def correlate_events_across_sensors(
     all_events: dict[str, list[VibrationEvent]],
     sensor_order: list[str],
     distances: list[float],
-    filtered_signals: dict[str, np.ndarray],
+    windowed_signals: dict[str, np.ndarray],
     config: Config
 ) -> list[VehiclePass]:
     """
     Match vibration events across consecutive sensors to identify vehicle passages.
 
-    Strategy:
-        For each event on the first sensor, search for matching events on
-        subsequent sensors within time windows derived from the plausible
-        speed range and known inter-sensor distances.
-
-    Two-stage matching:
-        1. Coarse: Use peak time windows from speed range constraints
-        2. Fine: Refine with cross-correlation of full signal segments
+    For each event on the first sensor, search for matching events on
+    subsequent sensors within time windows derived from the plausible
+    speed range and known inter-sensor distances. Cross-correlation on
+    the windowed signal (zeroed outside events) refines the match.
 
     Parameters
     ----------
@@ -571,9 +471,9 @@ def correlate_events_across_sensors(
     sensor_order : list[str]
         Sensors in order of vehicle travel direction.
     distances : list[float]
-        Cumulative distances from first sensor (meters). Length = len(sensor_order).
-    filtered_signals : dict
-        {sensor_name: np.ndarray} filtered signals for cross-correlation.
+        Cumulative distances from first sensor (meters).
+    windowed_signals : dict
+        {sensor_name: np.ndarray} signals zeroed outside event windows.
     config : Config
         Pipeline configuration.
 
@@ -594,16 +494,12 @@ def correlate_events_across_sensors(
     first_sensor = sensor_order[0]
     first_events = all_events.get(first_sensor, [])
 
-    print(first_events)
-
     if not first_events:
         print(f"  No events detected on first sensor: {first_sensor}")
         return []
 
     # Track which events on downstream sensors have been matched
     used_events = {s: set() for s in sensor_order[1:]}
-
-    print(used_events)
 
     for anchor_event in first_events:
         matched_chain = [anchor_event]
@@ -616,7 +512,6 @@ def correlate_events_across_sensors(
             next_sensor = sensor_order[i]
             next_events = all_events.get(next_sensor, [])
 
-            # Compute expected time window
             # Distance from previous sensor
             d = distances[i] - distances[i - 1]  # meters
             if d <= 0:
@@ -627,34 +522,36 @@ def correlate_events_across_sensors(
 
             # Time window: [d/v_max, d/v_min] from the previous event's peak
             prev_event = matched_chain[-1]
-            t_min_delay = d / v_max  # fastest vehicle → smallest delay
-            t_max_delay = d / v_min  # slowest vehicle → largest delay
+            t_min_delay = d / v_max  # fastest → smallest delay
+            t_max_delay = d / v_min  # slowest → largest delay
 
             expected_t_min = prev_event.peak_time + t_min_delay
             expected_t_max = prev_event.peak_time + t_max_delay
 
             # Find candidate events within the time window
             candidates = []
+            count=0
             for j, ev in enumerate(next_events):
                 if j in used_events[next_sensor]:
                     continue
                 if expected_t_min <= ev.peak_time <= expected_t_max:
-                    # Check amplitude compatibility
-                    amp_ratio = ev.peak_amplitude / (anchor_event.peak_amplitude + 1e-10)
+                    amp_ratio = abs(ev.peak_amplitude) / (abs(anchor_event.peak_amplitude) + 1e-10)
                     if config.min_amplitude_ratio <= amp_ratio <= config.max_amplitude_ratio:
+                        count = count+1
+                        print('count:', count)
                         candidates.append((j, ev))
-            print(candidates)
+
             if not candidates:
                 valid_chain = False
                 break
 
-            # Refine with cross-correlation
+            # Refine with cross-correlation on the DC-removed signal
             prev_ev = matched_chain[-1]
             seg_half = int(max(prev_ev.duration, 0.5) / dt)
             seg1_start = max(0, prev_ev.peak_idx - seg_half)
-            seg1_end = min(len(filtered_signals[prev_ev.sensor]),
+            seg1_end = min(len(windowed_signals[prev_ev.sensor]),
                           prev_ev.peak_idx + seg_half)
-            seg1 = filtered_signals[prev_ev.sensor][seg1_start:seg1_end]
+            seg1 = windowed_signals[prev_ev.sensor][seg1_start:seg1_end]
 
             max_lag = int(t_max_delay / dt) + seg_half
 
@@ -664,9 +561,9 @@ def correlate_events_across_sensors(
 
             for j, cand_ev in candidates:
                 seg2_start = max(0, cand_ev.peak_idx - seg_half)
-                seg2_end = min(len(filtered_signals[next_sensor]),
+                seg2_end = min(len(windowed_signals[next_sensor]),
                               cand_ev.peak_idx + seg_half)
-                seg2 = filtered_signals[next_sensor][seg2_start:seg2_end]
+                seg2 = windowed_signals[next_sensor][seg2_start:seg2_end]
 
                 min_len = min(len(seg1), len(seg2))
                 if min_len < 10:
@@ -676,7 +573,7 @@ def correlate_events_across_sensors(
                     seg1[:min_len], seg2[:min_len], max_lag, dt
                 )
 
-                if score > best_corr or score >= config.min_shape_similarity:
+                if score > best_corr and score >= config.min_shape_similarity:
                     best_corr = score
                     best_match = (j, cand_ev)
                     best_delay = cand_ev.peak_time - prev_ev.peak_time
@@ -712,7 +609,6 @@ def correlate_events_across_sensors(
                 confidence = (completeness * 0.3 + avg_corr * 0.4 +
                              speed_consistency * 0.3)
 
-                print(matched_chain)
                 vp = VehiclePass(
                     events=matched_chain,
                     time_delays=delays,
@@ -722,8 +618,8 @@ def correlate_events_across_sensors(
                     confidence=confidence,
                     correlation_scores=corr_scores
                 )
+                #print(vp.events)
                 vehicle_passes.append(vp)
-                print(vehicle_passes)
 
     vehicle_passes.sort(key=lambda vp: vp.events[0].peak_time)
     return vehicle_passes
@@ -734,16 +630,14 @@ def correlate_events_across_sensors(
 # =============================================================================
 
 def plot_detection_results(
-    df: pd.DataFrame,
-    filtered_signals: dict[str, np.ndarray],
-    envelopes: dict[str, np.ndarray],
+    windowed_signals: dict[str, np.ndarray],
     all_events: dict[str, list[VibrationEvent]],
     sensor_order: list[str],
     config: Config,
     save_path: str = 'graphs/event_detection.png'
 ):
     """
-    Plot filtered signals with detected events highlighted for each sensor.
+    Plot DC-removed signals with detected event windows highlighted.
     """
     n_sensors = len(sensor_order)
     fig, axes = plt.subplots(n_sensors, 1, figsize=(16, 3.5 * n_sensors),
@@ -751,33 +645,26 @@ def plot_detection_results(
     if n_sensors == 1:
         axes = [axes]
 
-    time_s = np.arange(len(filtered_signals[sensor_order[0]])) * config.dt
+    time_s = np.arange(len(windowed_signals[sensor_order[0]])) * config.dt
     colors = plt.cm.Set1(np.linspace(0, 1, max(10, n_sensors)))
 
     for i, sensor in enumerate(sensor_order):
         ax = axes[i]
-        sig = filtered_signals[sensor]
-        env = envelopes[sensor]
+        sig = windowed_signals[sensor]
         events = all_events.get(sensor, [])
-
-        # Threshold line
-        env_mean = np.mean(env)
-        env_std = np.std(env)
-        threshold = env_mean + config.threshold_sigma * env_std
 
         # Plot signal
         ax.plot(time_s, sig, color=colors[i], alpha=0.6, linewidth=0.5,
-                label=f'{sensor} (filtered)')
-        # Plot envelope
-        #ax.plot(time_s, env, color='black', alpha=0.8, linewidth=1.0, label='Envelope')
-        #ax.plot(time_s, -env, color='black', alpha=0.8, linewidth=1.0)
-        # Threshold
-        ax.axhline(threshold, color='red', linestyle='--', alpha=0.5,
-                    linewidth=0.8, label=f'Threshold ({config.threshold_sigma}σ)')
-        ax.axhline(-threshold, color='red', linestyle='--', alpha=0.5,
+                label=f'{sensor}')
+
+        # Threshold lines
+        thr = config.event_threshold
+        ax.axhline(thr, color='red', linestyle='--', alpha=0.5,
+                    linewidth=0.8, label=f'Threshold ({thr})')
+        ax.axhline(-thr, color='red', linestyle='--', alpha=0.5,
                     linewidth=0.8)
 
-        # Highlight detected events
+        # Highlight detected event windows
         for ev in events:
             ax.axvspan(ev.start_time, ev.end_time,
                       alpha=0.2, color='orange')
@@ -807,8 +694,8 @@ def plot_correlation_results(
     save_path: str = 'graphs/speed_estimation.png'
 ):
     """
-    Plot matched vehicle passages showing:
-      - Top: Time-distance diagram (sensor vs time, with vehicle tracks)
+    Plot matched vehicle passages:
+      - Top: Time-distance diagram with vehicle tracks
       - Bottom: Speed histogram
     """
     if not vehicle_passes:
@@ -885,7 +772,7 @@ def plot_correlation_results(
 
 def plot_matched_waveforms(
     vehicle_passes: list[VehiclePass],
-    filtered_signals: dict[str, np.ndarray],
+    windowed_signals: dict[str, np.ndarray],
     config: Config,
     max_passes: int = 6,
     save_path: str = 'graphs/matched_waveforms.png'
@@ -911,8 +798,8 @@ def plot_matched_waveforms(
         for j, ev in enumerate(vp.events):
             half_win = int(max(ev.duration, 0.5) / config.dt)
             start = max(0, ev.peak_idx - half_win)
-            end = min(len(filtered_signals[ev.sensor]), ev.peak_idx + half_win)
-            wave = filtered_signals[ev.sensor][start:end]
+            end = min(len(windowed_signals[ev.sensor]), ev.peak_idx + half_win)
+            wave = windowed_signals[ev.sensor][start:end]
 
             t = (np.arange(len(wave)) - (ev.peak_idx - start)) * config.dt
 
@@ -1002,7 +889,7 @@ def print_summary(
         print(f"  High-confidence (>0.6): {sum(1 for c in confs if c > 0.6)}")
     else:
         print("  No vehicle passes detected.")
-        print("  Try: lower threshold_sigma, lower filter_threshold, or longer time window.")
+        print("  Try: lower event_threshold, increase event_window_sec, or longer time window.")
 
     print("\n" + "=" * 70)
 
@@ -1022,6 +909,13 @@ def run_pipeline(
 ) -> tuple[list[VehiclePass], dict]:
     """
     Run the complete vehicle speed estimation pipeline.
+
+    Pipeline flow:
+        1. Load data → time-windowed DataFrame
+        2. DC removal (mean subtraction) per sensor
+        3. Event extraction via threshold-triggered windowing
+        4. Cross-sensor event correlation → speed estimates
+        5. Visualization & summary
 
     Parameters
     ----------
@@ -1050,14 +944,14 @@ def run_pipeline(
     print("=" * 70)
     print("  VEHICLE SPEED ESTIMATION PIPELINE")
     print("=" * 70)
-    print(f"  File:          {filepath}")
-    print(f"  Window:        {start_time} + {duration_mins} min")
-    print(f"  Sensors:       {sensor_order}")
-    print(f"  Distances:     {distances} m")
-    print(f"  Speed range:   {config.speed_min_kmh}–{config.speed_max_kmh} km/h")
-    print(f"  Filter thresh: {config.filter_threshold}  "
-          f"sample_period: {config.filter_sample_period}  "
-          f"pre_trigger: {config.filter_pre_trigger}")
+    print(f"  File:            {filepath}")
+    print(f"  Window:          {start_time} + {duration_mins} min")
+    print(f"  Sensors:         {sensor_order}")
+    print(f"  Distances:       {distances} m")
+    print(f"  Speed range:     {config.speed_min_kmh}–{config.speed_max_kmh} km/h")
+    print(f"  Event threshold: {config.event_threshold}")
+    print(f"  Event window:    {config.event_window_sec}s  "
+          f"pre-trigger: {config.event_pre_trigger_sec}s")
     print()
 
     # Validate distances
@@ -1072,41 +966,43 @@ def run_pipeline(
     print("Step 1: Loading data...")
     df = load_data(filepath, sensor_order, start_time, duration_mins)
 
-    # Step 2: Preprocess each sensor
-    print("\nStep 2: Preprocessing signals (threshold-based window filter)...")
-    filtered_signals = {}
-    envelopes = {}
+    # Step 2: DC removal (mean subtraction) per sensor
+    print("\nStep 2: DC removal (mean subtraction)...")
+    dc_removed_signals = {}
     for sensor in sensor_order:
         raw = df[sensor].values.astype(np.float64)
-        print(f"  {sensor}: raw range [{np.nanmin(raw):.4f}, {np.nanmax(raw):.4f}]")
-        filt, env = preprocess_signal(raw, config)
-        filtered_signals[sensor] = filt
-        envelopes[sensor] = env
-        print(f"    → filtered range [{filt.min():.4f}, {filt.max():.4f}]")
+        centered = raw - np.nanmean(raw)
+        dc_removed_signals[sensor] = centered
+        print(f"  {sensor}: raw [{np.nanmin(raw):.6f}, {np.nanmax(raw):.6f}] "
+              f"→ centered [{centered.min():.6f}, {centered.max():.6f}]")
 
-    # Step 3: Detect events per sensor
-    print("\nStep 3: Detecting events...")
+    # Step 3: Extract events per sensor
+    # Also produces windowed signals (zeroed outside event windows)
+    print("\nStep 3: Extracting events (threshold-triggered windowing)...")
     all_events = {}
+    windowed_signals = {}
     for sensor in sensor_order:
-        events = detect_events(
-            filtered_signals[sensor],
-            envelopes[sensor],
-            sensor, config
+        events, windowed = extract_and_build_events(
+            dc_removed_signals[sensor],
+            sensor,
+            config,
         )
         all_events[sensor] = events
-        print(f"  {sensor}: {len(events)} events detected")
+        windowed_signals[sensor] = windowed
+        print(f"  {sensor}: {len(events)} events")
 
     # Step 4: Correlate events & estimate speed
+    # Uses windowed signals (zeroed outside events) for cross-correlation
     print("\nStep 4: Correlating events across sensors...")
     vehicle_passes = correlate_events_across_sensors(
         all_events, sensor_order, distances,
-        filtered_signals, config
+        windowed_signals, config
     )
 
     # Step 5: Visualize
     print("\nStep 5: Generating visualizations...")
     plot_detection_results(
-        df, filtered_signals, envelopes, all_events,
+        windowed_signals, all_events,
         sensor_order, config,
         save_path=os.path.join(output_dir, 'event_detection.png')
     )
@@ -1115,7 +1011,7 @@ def run_pipeline(
         save_path=os.path.join(output_dir, 'speed_estimation.png')
     )
     plot_matched_waveforms(
-        vehicle_passes, filtered_signals, config,
+        vehicle_passes, windowed_signals, config,
         save_path=os.path.join(output_dir, 'matched_waveforms.png')
     )
 
@@ -1124,8 +1020,8 @@ def run_pipeline(
 
     diagnostics = {
         'df': df,
-        'filtered_signals': filtered_signals,
-        'envelopes': envelopes,
+        'dc_removed_signals': dc_removed_signals,
+        'windowed_signals': windowed_signals,
         'all_events': all_events,
         'config': config,
     }
@@ -1141,36 +1037,6 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Estimate vehicle speed from bridge accelerometer data',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Use predefined sensor group:
-  python vehicle_speed_estimation.py \\
-      --path data.csv \\
-      --start_time '2025/03/07 01:05:00' \\
-      --duration_mins 5 \\
-      --sensor_group campate1a \\
-      --distances 0 25 50
-
-  # Custom sensors and distances:
-  python vehicle_speed_estimation.py \\
-      --path data.parquet \\
-      --start_time '2025/03/07 01:05:00' \\
-      --duration_mins 3 \\
-      --sensors 030911FF_x 030911EF_x 03091200_x \\
-      --distances 0 25 50
-
-  # Adjust filter sensitivity:
-  python vehicle_speed_estimation.py \\
-      --path data.csv \\
-      --start_time '2025/03/07 01:05:00' \\
-      --duration_mins 5 \\
-      --sensor_group campate1b \\
-      --distances 0 30 60 \\
-      --filter_threshold 0.0005 \\
-      --filter_sample_period 300 \\
-      --threshold_sigma 2.5 \\
-      --speed_min 40 --speed_max 130
-        """
     )
 
     # Required
@@ -1190,32 +1056,32 @@ Examples:
     group.add_argument('--sensors', nargs='+',
                        help='Custom sensor column names in travel order')
 
-    # Distances (always required for speed calculation)
+    # Distances (always required)
     parser.add_argument('--distances', nargs='+', type=float, required=True,
                         help='Cumulative distance (m) of each sensor from first sensor. '
                              'Must start with 0. E.g.: 0 25 50')
 
-    # Filter parameters
-    parser.add_argument('--filter_threshold', type=float, default=0.001,
-                        help='Amplitude threshold to open active window (default: 0.0003)')
-    parser.add_argument('--filter_sample_period', type=int, default=300,
-                        help='Samples to extend window after last threshold crossing (default: 200)')
-    parser.add_argument('--filter_pre_trigger', type=int, default=50,
-                        help='Samples before trigger to include in window (default: 0)')
+    # Event extraction parameters
+    parser.add_argument('--event_threshold', type=float, default=0.001,
+                        help='Amplitude threshold to trigger event window (default: 0.001)')
+    parser.add_argument('--event_window_sec', type=float, default=4.0,
+                        help='Event window duration after trigger in seconds (default: 5.0)')
+    parser.add_argument('--event_pre_trigger_sec', type=float, default=1.0,
+                        help='Pre-trigger time to include in seconds (default: 0.5)')
 
-    # Tunable parameters
-    parser.add_argument('--threshold_sigma', type=float, default=3.0,
-                        help='Event detection threshold = mean + sigma*std (default: 3.0)')
-    parser.add_argument('--speed_min', type=float, default=50.0,
-                        help='Min plausible speed km/h (default: 30)')
-    parser.add_argument('--speed_max', type=float, default=100.0,
-                        help='Max plausible speed km/h (default: 150)')
+    # Correlation / speed parameters
+    parser.add_argument('--speed_min', type=float, default=60.0,
+                        help='Min plausible speed km/h (default: 60)')
+    parser.add_argument('--speed_max', type=float, default=150.0,
+                        help='Max plausible speed km/h (default: 130)')
     parser.add_argument('--min_event_duration', type=float, default=0.3,
                         help='Min event duration seconds (default: 0.3)')
-    parser.add_argument('--b', type=float, default=0.3,
-                        help='Min cross-correlation score for matching (default: 0.3)')
-    parser.add_argument('--output_dir', default='graphs',
-                        help='Output directory for plots (default: graphs)')
+    parser.add_argument('--max_event_duration', type=float, default=100.0,
+                        help='Max event duration seconds (default: 100.0)')
+    parser.add_argument('--b', type=float, default=0.1,
+                        help='Min cross-correlation score for matching (default: 0.1)')
+    parser.add_argument('--output_dir', default='graphs/approach_2_cross_corr_wt_confidence',
+                        help='Output directory for plots')
 
     return parser.parse_args()
 
@@ -1225,17 +1091,19 @@ def main():
 
     config = Config()
 
-    # Filter parameters
-    config.filter_threshold    = args.filter_threshold
-    config.filter_sample_period = args.filter_sample_period
-    config.filter_pre_trigger  = args.filter_pre_trigger
+    # Event extraction parameters
+    config.event_threshold      = args.event_threshold
+    config.event_window_sec     = args.event_window_sec
+    config.event_pre_trigger_sec = args.event_pre_trigger_sec
 
-    # Detection / correlation parameters
-    config.threshold_sigma        = args.threshold_sigma
-    config.speed_min_kmh          = args.speed_min
-    config.speed_max_kmh          = args.speed_max
-    config.min_event_duration_s   = args.min_event_duration
-    config.min_shape_similarity   = args.b
+    # Duration filters
+    config.min_event_duration_s = args.min_event_duration
+    config.max_event_duration_s = args.max_event_duration
+
+    # Correlation parameters
+    config.speed_min_kmh        = args.speed_min
+    config.speed_max_kmh        = args.speed_max
+    config.min_shape_similarity = args.b
 
     # Resolve sensors
     if args.sensor_group:
@@ -1271,5 +1139,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-#ex: python3 vehicle_speed_est.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 4 --sensors 030911FF_x 030911EF_x 03091155_z --b 0.1 --distances 0 32.36 83.91
-#ex: 
+# ex: python3 vehicle_speed_estimation.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 4 --sensors 030911FF_x 030911EF_x 03091155_z --b 0.1 --distances 0 32.36 83.91
