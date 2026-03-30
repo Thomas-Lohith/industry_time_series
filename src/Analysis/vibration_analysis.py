@@ -1,3 +1,4 @@
+import html
 import pandas as pd
 import polars as pl
 import matplotlib.pyplot as plt
@@ -30,7 +31,7 @@ def load_data_polars(filepath):
         df = pl.read_csv(filepath, separator= ';')
         print('reading the csv file:')
         # Count total rows without loading everything to memory
-        total_rows = df.select(pl.count()).item() #use .collect if we use scan_csv function
+        total_rows = df.select(pl.len()).item() #use .collect if we use scan_csv function
         print(f"Total rows: {total_rows:,}")
     
         # Get column names for sensor data (assuming pattern ends with _z for vertical direction)
@@ -57,25 +58,42 @@ def load_data_polars(filepath):
         print(f"Found {len(sensor_columns)} sensor columns:")
         print(f"Using '{time_column}' as the time column")
     
-    # sensors 99,100,101
-    campate2_sensor_columns = ['030911D2_x', '03091005_x', '0309101F_x']
-    #sensors in order 53->52->51
-    campate1b_sensor_columns = ['0309100F_x', '030910F6_x', '0309101E_x']
-    #sensors in order 106->105->104
-    campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '03091207_x', '03091119_z'] 
-    #sensor column on whole brideg
-    all_campate_sensor_columns = ['030911FF_x', '03091017_z', '03091113_x', '0309123B_z', '03091111_z', '03091003_x'] 
+    # # sensors 99,100,101
+    # campate2_sensor_columns = ['030911D2_x', '03091005_x', '0309101F_x']
+    # #sensors in order 53->52->51
+    # campate1b_sensor_columns = ['0309100F_x', '030910F6_x', '0309101E_x']
+    # #sensors in order 106->105->104
+    # campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '03091207_x', '03091119_z'] 
+    # #sensor column on whole brideg
+    # all_campate_sensor_columns = ['030911FF_x', '03091017_z', '03091113_x', '0309123B_z', '03091111_z', '03091003_x'] 
 
-    first_campata = [ '030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '0309100F_x', '030910F6_x', '0309101E_x', '03091018_z']
+    # first_campata = [ '030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '0309100F_x', '030910F6_x', '0309101E_x', '03091018_z']
 
-    # whole bridge overview: 106->93->83->78->67->54
-    whole_bridge_overview = [ '030911FF_x', '0309113F_z', '0309123B_z', '03091204_x', '03091111_z', '03091003_x']
-     #first campate sensors in order 106->105->104->53->52->51
-    #sensor_columns = [col for col in campate1a_sensor_columns if col in df.columns]  
-    sensor_columns = [col for col in whole_bridge_overview if col in df.columns]
+    # # whole bridge overview: 106->93->83->78->67->54
+    # whole_bridge_overview = [ '030911FF_x', '0309113F_z', '0309123B_z', '03091204_x', '03091111_z', '03091003_x']
+    #  #first campate sensors in order 106->105->104->53->52->51
+    # #sensor_columns = [col for col in campate1a_sensor_columns if col in df.columns]  
+    # sensor_columns = [col for col in whole_bridge_overview if col in df.columns]
     
     memory_usage()
     return df, sensor_columns, time_column
+
+def parse_sensor_ids(sensor_str, available_sensors):
+    if sensor_str is None:
+           return available_sensors
+    
+    # Parse comma-separated values
+    requested = [s.strip() for s in sensor_str.split(',')]
+    
+    # Validate each sensor exists
+    invalid = [s for s in requested if s not in available_sensors]
+    if invalid:
+        raise ValueError(
+            f"Invalid sensor IDs: {invalid}\n"
+            f"Available sensors: {available_sensors}"
+        )
+    return requested
+
 
 def _get_filtered_mask(sensor_series: pd.Series, threshold: float, sample_period: int) -> np.ndarray:
     """
@@ -192,13 +210,10 @@ def filter_dc_by_mean(df: pl.DataFrame, sensor_columns: list[str]) -> pl.DataFra
                 (pl.col(col) - col_mean).alias(col)
             )
 
-    # print("\nProcessed Data (First 5 Rows):")
-    # print(result_df.head())
 
     return result_df
 
-def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_mins):
-    print(f"Visualizing sensors in one campate with sample interval from {start_time} to {duration_mins} mins...")
+def get_only_interested_duration(df, sensor_columns, time_column, start_time, duration_mins):
     memory_usage()
 
     # Select only necessary columns and sample at specified interval
@@ -208,21 +223,30 @@ def visualize_all_sensors(df, sensor_columns, time_column, start_time, duration_
     )
     print(f"Sampled data shape: {sampled_df.shape}")
     memory_usage()
-    
+
     sampled_df[time_column] = pd.to_datetime(sampled_df[time_column], format='%Y/%m/%d %H:%M:%S:%f', errors="coerce", exact=False)
-    #print('chek the date format:', sampled_df.head(1))
+    
 
     #PLOT ONLY duration we want to analyse 
     start_time = pd.to_datetime(start_time)
-    #print('check:', start_time)
+    
+
     end_time = start_time + pd.Timedelta(minutes=duration_mins)
 
     #limit to the specific time frame
     sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
+    
     #print('intereseted time dataframe-start', sampled_df.head(1))
     #print('limited time frame dataframe-end', sampled_df.tail(1))
+    memory_usage()
+
+    return sampled_df
 
 
+
+def visualize_all_sensors(sampled_df, sensor_columns, time_column, start_time, duration_mins):
+    print(f"Visualizing sensors in one campate with sample interval from {start_time} to {duration_mins} mins...")
+    memory_usage()
  
     # Choose the sensors you want to plot with matplolib
     sensor_list = sensor_columns[:8]  # or list(vertical_columns.values())[:6]
@@ -368,7 +392,6 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     print("Sensor histograms saved to sensor_histograms.png")
     memory_usage()
 
-
 def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2,
                       save_path='waterfall_3d.png'):
     """
@@ -485,12 +508,57 @@ def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2
     plt.show()
     memory_usage()
 
+def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, output_path =None) -> None:
+
+    invalid = [s for s in sensor_ids if s not in df.columns]
+    if invalid:
+        raise ValueError(f"Sensors not found in data: {invalid}")
+ 
+ 
+    fig = go.Figure()
+ 
+    for sensor_id in sensor_ids:
+        fig.add_trace(go.Scatter(
+            x=df[time_column],
+            y=df[sensor_id],
+            mode='lines',
+            name=sensor_id,
+            line=dict(width=1.2),
+            opacity=0.85,
+        ))
+ 
+    plot_title = f"Acceleration Data from Sensors ({len(sensor_ids)} sensors)"
+ 
+    fig.update_layout(
+        title=plot_title,
+        xaxis_title="Time",
+        yaxis_title="Acceleration",
+        hovermode='x unified',
+        template='plotly_dark',
+        legend=dict(
+            title="Sensors",
+            orientation='h',
+            yanchor='bottom',
+            y=-0.25,
+            xanchor='center',
+            x=0.5,
+        ),
+        height=600,
+    )
+ 
+    if output_path:
+       #fig.write_html(f'{output_path}/fig.html')
+       pass
+    
+    fig.show()
+
+
 def main():
     parser = argparse.ArgumentParser('Analyse the vibration realting the dyanmic weighing data')
     parser.add_argument('--path', type = str, required=True, help= 'path for the file')
     parser.add_argument('--start_time', type=str, required=True, help= 'starting time frame interedted in')
     parser.add_argument('--duration_mins', type=float, required=True, help = 'duration in mins of time frame interested')
-    parser.add_argument('--sensor', type=str, default=None, help = 'sensor to be anlaysed')
+    parser.add_argument('--sensor', type=str, default=None, help = 'Sensor ID(s) to analyze (comma-separated for multiple)')
 
     #ex for script RUNNING: python3 vibration_analysis.py --path  --start_time --duration_mins
     args = parser.parse_args()
@@ -502,28 +570,35 @@ def main():
     sample_period = 300
       
     # Load data using Polars
-    df, sensor_columns, time_column = load_data_polars(path)
+    df, available_sensors, time_column = load_data_polars(path)
+
+    sensor_columns = parse_sensor_ids(sensor_columns, available_sensors)
     
     # Process the filtered data
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
 
-    # visualise each sensor in campate for a sample interval
-    sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
+    sampled_df = get_only_interested_duration(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
 
-    filtered_df, signal_fil_ratio = filterby_threshold(sampled_df, threshold, sample_period, sensor_columns)
+    visualize_overlay(sampled_df,sensor_columns, time_column)
+
+
+    # visualise each sensor in campate for a sample interval
+    #sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
+
+    #filtered_df, signal_fil_ratio = filterby_threshold(sampled_df, threshold, sample_period, sensor_columns)
     
     #multi_sensor_spectrogram(sampled_df, sensor_columns, cols=3)
 
     #visualize_sensor_histograms(sampled_df, sensor_columns, bins=50)
 
-    waterfall_3d_plot(
-            df=filtered_df,
-            sensor_columns=sensor_columns,
-            time_column=time_column,
-            fs=100,
-            downsample_step=2,
-            save_path='waterfall_3d_whole_bridge_overview.png'
-        )
+    # waterfall_3d_plot(
+    #         df=filtered_df,
+    #         sensor_columns=sensor_columns,
+    #         time_column=time_column,
+    #         fs=100,
+    #         downsample_step=2,
+    #         save_path='waterfall_3d_whole_bridge_overview.png'
+    #     )
 
    
     print("Analysis complete!")
@@ -533,4 +608,4 @@ if __name__ == "__main__":
     main()
     #instructions to run this parametric scripts:
     #check wether the parameters correctly matching the format(for ex: the date and month should be interchanegd from the format of weighing data)  
-    # python3 vibration_analysis.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 5
+    #  python3 vibration_analysis.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 5 --sensor 03091203_x,0309101F_x

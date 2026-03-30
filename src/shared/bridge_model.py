@@ -64,6 +64,7 @@ WHY EACH OOP CONCEPT IS USED
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 from dataclasses import dataclass, field, asdict
@@ -84,13 +85,11 @@ def _safe_float(val: str, default: float = 0.0) -> float:
 
 
 def _read_csv(path: Union[str, Path], delimiter: str = ",") -> List[Dict[str, str]]:
-
     """Read a CSV into a list of row-dicts."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"CSV not found: {path}")
     with open(path, "r", encoding="utf-8-sig") as fh:
-        #print(fh.read(5))
         return list(csv.DictReader(fh, delimiter=delimiter))
 
 
@@ -117,7 +116,7 @@ class ThresholdLevel:
     """
     sigma: int            # the n in  mean + n*std  (1, 2, or 3)
     threshold: float      # the cutoff applied to |value|
-    mean: float = 0.0 # mean of |values|
+    mean_abs: float = 0.0 # mean of |values|
     std: float = 0.0      # std of |values|
 
     def is_noise(self, value: float) -> bool:
@@ -146,9 +145,9 @@ class ThresholdConfig:
     _levels: Dict[int, ThresholdLevel] = field(default_factory=dict)
 
     def add(self, sigma: int, threshold: float,
-            mean: float = 0.0, std: float = 0.0) -> None:
+            mean_abs: float = 0.0, std: float = 0.0) -> None:
         """Register a threshold level (e.g. sigma=2, threshold=0.0065)."""
-        self._levels[sigma] = ThresholdLevel(sigma, threshold, mean, std)
+        self._levels[sigma] = ThresholdLevel(sigma, threshold, mean_abs, std)
 
     def get(self, sigma: int) -> Optional[ThresholdLevel]:
         """Get a specific sigma level, or None."""
@@ -196,7 +195,7 @@ class ThresholdConfig:
 # from it.  This keeps threshold logic separate and testable.
 
 @dataclass
-class Sensor:   
+class Sensor:
     """
     One accelerometer channel on the bridge.
     Every attribute comes from the CSV -- nothing is guessed from the ID.
@@ -204,6 +203,7 @@ class Sensor:
     sensor_id: str
     span_id: str
     relative_distance: float
+    number: int = -1        # human-friendly number (e.g. 99), -1 = not assigned
     side: str = ""          # e.g. "left", "right" -- free-form from CSV
     axis: str = ""          # e.g. "x", "z" -- from CSV, NOT from sensor ID
     thresholds: ThresholdConfig = field(default_factory=ThresholdConfig)
@@ -222,15 +222,19 @@ class Sensor:
 
     def to_dict(self) -> dict:
         return {
-            "sensor_id": self.sensor_id, "span_id": self.span_id,
+            "sensor_id": self.sensor_id, "number": self.number,
+            "span_id": self.span_id,
             "relative_distance": self.relative_distance,
             "side": self.side, "axis": self.axis,
             "thresholds": self.thresholds.to_dict(), "extra": self.extra,
         }
 
     def __repr__(self) -> str:
-        parts = [f"'{self.sensor_id}'", f"span='{self.span_id}'",
-                 f"dist={self.relative_distance:.3f}"]
+        parts = [f"'{self.sensor_id}'"]
+        if self.number >= 0:
+            parts.append(f"#{self.number}")
+        parts.append(f"span='{self.span_id}'")
+        parts.append(f"dist={self.relative_distance:.3f}")
         if self.side:
             parts.append(f"side={self.side}")
         if self.axis:
@@ -320,17 +324,20 @@ class Bridge:
     """
     Top-level container.
 
-    bridge["030911D2_x"]            -> Sensor  (O(1))
+    bridge["030911D2_x"]            -> Sensor  (O(1) by ID)
+    bridge[99]                      -> Sensor  (O(1) by number)
     bridge.span("campata_2")        -> Span    (O(1))
     bridge.at("campata_2", 14.0)    -> [Sensor, ...]
     for span in bridge: ...         -> iterate spans
-    "030911D2_x" in bridge          -> membership
+    "030911D2_x" in bridge          -> membership by ID
+    99 in bridge                    -> membership by number
     """
 
     def __init__(self, name: str = "Bridge"):
         self.name = name
         self._spans: Dict[str, Span] = {}
         self._registry: Dict[str, Sensor] = {}
+        self._num_registry: Dict[int, Sensor] = {}   # number -> Sensor
         self._loc_index: Dict[Tuple, List[Sensor]] = defaultdict(list)
         self._loc_dirty = False
 
@@ -342,6 +349,8 @@ class Bridge:
             self._spans[sensor.span_id] = Span(sensor.span_id)
         self._spans[sensor.span_id].add_sensor(sensor)
         self._registry[sensor.sensor_id] = sensor
+        if sensor.number >= 0:
+            self._num_registry[sensor.number] = sensor
         self._loc_dirty = True
 
     def _rebuild_loc(self) -> None:
@@ -351,11 +360,41 @@ class Bridge:
         self._loc_dirty = False
 
     # --- lookups ---
-    def __getitem__(self, sensor_id: str) -> Sensor:
-        return self._registry[sensor_id]
+    def __getitem__(self, key: Union[str, int]) -> Sensor:
+        """Lookup by sensor_id (str) or sensor number (int)."""
+        if isinstance(key, int):
+            return self._num_registry[key]
+        return self._registry[key]
 
-    def get(self, sensor_id: str) -> Optional[Sensor]:
-        return self._registry.get(sensor_id)
+    def get(self, key: Union[str, int]) -> Optional[Sensor]:
+        """Lookup by sensor_id or number, returns None if missing."""
+        if isinstance(key, int):
+            return self._num_registry.get(key)
+        return self._registry.get(key)
+
+    def resolve(self, keys: List[Union[str, int]]) -> List[Sensor]:
+        """
+        Resolve a mixed list of sensor IDs and/or numbers to Sensor objects.
+
+        Example:
+            bridge.resolve([99, "030911D2_x", 101])
+            -> [Sensor(...), Sensor(...), Sensor(...)]
+
+        Raises KeyError if any key is not found.
+        """
+        result = []
+        for k in keys:
+            s = self[k]  # uses __getitem__, raises KeyError on miss
+            result.append(s)
+        return result
+
+    def resolve_ids(self, keys: List[Union[str, int]]) -> List[str]:
+        """Resolve numbers/IDs to a list of sensor_id strings."""
+        return [s.sensor_id for s in self.resolve(keys)]
+
+    def resolve_numbers(self, keys: List[Union[str, int]]) -> List[int]:
+        """Resolve IDs/numbers to a list of sensor numbers."""
+        return [s.number for s in self.resolve(keys)]
 
     def span(self, span_id: str) -> Optional[Span]:
         return self._spans.get(span_id)
@@ -405,15 +444,17 @@ class Bridge:
         for sid in sorted(self._spans):
             yield self._spans[sid]
 
-    def __contains__(self, sensor_id: str) -> bool:
-        return sensor_id in self._registry
+    def __contains__(self, key: Union[str, int]) -> bool:
+        if isinstance(key, int):
+            return key in self._num_registry
+        return key in self._registry
 
     def __len__(self) -> int:
         return self.n_sensors
 
     # --- display / export ---
     def summary(self) -> str:
-        lines = [f"Bridge: {self.name}", "-" * 55 ,
+        lines = [f"Bridge: {self.name}", "-" * 65,
                  f"Spans: {self.n_spans}   Sensors: {self.n_sensors}", ""]
         for sp in self:
             pairs = sp.paired()
@@ -423,8 +464,9 @@ class Bridge:
                 f"{sum(len(v) for v in pairs.values())} paired)")
             for s in sp:
                 t = f"{s.thresholds}" if s.thresholds.has_any else "no thresholds"
+                num = f"#{s.number:<4d}" if s.number >= 0 else "#?   "
                 lines.append(
-                    f"    {s.sensor_id:20s}  dist={s.relative_distance:7.2f}  "
+                    f"    {num} {s.sensor_id:20s}  dist={s.relative_distance:7.2f}  "
                     f"side={s.side or '?':6s}  axis={s.axis or '?':3s}  {t}")
         missing = self.missing_thresholds()
         if missing:
@@ -478,13 +520,14 @@ def load_bridge(
     different bridges with different CSV formats.
     """
     PC = {
-        "sensor_id": "vertical", "SECTION": "SECTION",
-        "DIST_M": "DIST_M",
+        "sensor_id": "vertical", "span_id": "SECTION",
+        "relative_distance": "DIST_M",
+        "number": "sensor_id",     # optional: human-friendly sensor number
         "side": "side", "axis": "axis",
     }
     TC = {
-        "sensor": "sensor",
-        "mean": "mean", "std": "std",
+        "sensor_id": "sensor",
+        "mean_abs": "mean", "std": "std",
         "threshold_1sigma": "threshold_1sigma",
         "threshold_2sigma": "threshold_2sigma",
         "threshold_3sigma": "threshold_3sigma",
@@ -500,20 +543,25 @@ def load_bridge(
     known_keys = set(PC.values())
     rows = _read_csv(position_csv, delimiter)
     created: Dict[str, Sensor] = {}
-    #print(rows)
+
     for row in rows:
         sid = row[PC["sensor_id"]].strip()
+
+        # Parse number (optional column, defaults to -1)
+        num_str = row.get(PC["number"], "").strip()
+        num = int(num_str) if num_str.isdigit() else -1
+
         sensor = Sensor(
             sensor_id=sid,
-            span_id=row[PC["SECTION"]].strip(),
-            relative_distance=_safe_float(row[PC["DIST_M"]]),
+            span_id=row[PC["span_id"]].strip(),
+            relative_distance=_safe_float(row[PC["relative_distance"]]),
+            number=num,
             side=row.get(PC["side"], "").strip(),
             axis=row.get(PC["axis"], "").strip(),
             extra={k: v for k, v in row.items() if k not in known_keys},
         )
         bridge.add(sensor)
         created[sid] = sensor
-    #print(created)
 
     print(f"[positions]  {len(created)} sensors from {Path(position_csv).name}")
 
@@ -522,15 +570,12 @@ def load_bridge(
     matched = 0
 
     for row in thr_rows:
-        sid = row[TC["sensor"]].strip()
-        #print(sid)
+        sid = row[TC["sensor_id"]].strip()
         sensor = created.get(sid)
-        #print(sensor)
         if sensor is None:
-            
             continue
 
-        mean = _safe_float(row.get(TC["mean"], "0"))
+        mean_abs = _safe_float(row.get(TC["mean_abs"], "0"))
         std = _safe_float(row.get(TC["std"], "0"))
 
         for sigma in (1, 2, 3):
@@ -539,7 +584,7 @@ def load_bridge(
                 sensor.thresholds.add(
                     sigma,
                     threshold=_safe_float(row[col]),
-                    mean=mean,
+                    mean_abs=mean_abs,
                     std=std,
                 )
         matched += 1
@@ -550,15 +595,34 @@ def load_bridge(
 
     return bridge
 
+
 def main():
+
+    parser = argparse.ArgumentParser('get the sensor code by providing the sensor number')
+
+    parser.add_argument('--sensor_num', type = str, help ='provide the sensor number (comma-separated for multiple)')
+
     position_csv = "/Users/thomas/Desktop/github_repos/industry_time_series/src/dataset/sensors.csv"
     threshold_csv = "/Users/thomas/Desktop/github_repos/industry_time_series/src/dataset/thresholds_abs.csv"
     delimiter: str = ","
     #load_bridge(position_csv, threshold_csv, delimiter=delimiter)
 
+
+    args = parser.parse_args()
+    sensors = args.sensor_num
+    sensors = [int(s.strip()) for s in sensors.split(',')]
+    #print(sensors)
+
     Bridge = load_bridge(position_csv, threshold_csv, delimiter=delimiter)
     Bridge.summary()
-    print(Bridge.summary())
+    #print(Bridge.summary())
+
+    sensors_list =  Bridge.resolve(sensors)
+    for i in sensors_list:
+        print(i)
 
 if __name__ == "__main__":
     main()
+
+    ###ex: python3 bridge_model.py --sensor_num 106,105,104
+    

@@ -11,3 +11,14 @@ src/dataset/old_thresholds_abs.csv
 src/dataset/thresholds_abs.csv
 src/research/graphs
 
+src/analysis/graphs/
+
+src/__pycache__
+src/analysis/__pycache__
+src/filtering/__pycache__
+src/research/__pycache__
+src/shared/__pycache__
+
+
+
+src/filtering/.DS_Store
