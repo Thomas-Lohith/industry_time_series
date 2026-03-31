@@ -1,4 +1,5 @@
 import html
+from typing import Optional
 import pandas as pd
 import polars as pl
 import matplotlib.pyplot as plt
@@ -189,7 +190,7 @@ def filterby_threshold(
 
     fig.suptitle('Threshold Filtering – All Sensors', fontsize=13, fontweight='bold')
     plt.tight_layout()
-    plt.savefig('ETFA_multisensor_whole_bridge_overview.png', dpi=150)
+    #plt.savefig('ETFA_multisensor_whole_bridge_overview.png', dpi=150)
     plt.show()
 
     return filtered_df, ratios
@@ -242,6 +243,126 @@ def get_only_interested_duration(df, sensor_columns, time_column, start_time, du
 
     return sampled_df
 
+# ============================================================================
+# PEAK DETECTION
+# ============================================================================
+ 
+def find_sensor_peaks(
+    df: pd.DataFrame,
+    sensor_ids: str,
+    time_column: str,
+    threshold: float,
+    sample_period
+):
+    """
+    Find one first peak and one dominant peak per event window.
+ 
+    Uses _get_filtered_mask() to group nearby threshold crossings into
+    single event windows (via sample_period extension), then within each
+    contiguous window finds extrema on the RAW signal (not abs):
+      - first_peak:    first extremum (local max or min) in the window,
+                       including the very first sample (boundary check)
+      - dominant_peak: extremum with the largest absolute amplitude
+ 
+    Peak detection uses raw signed values so that a positive peak followed
+    by a larger negative swing doesn't get missed.
+ 
+    Args:
+        df: DataFrame with time and sensor columns (DC already removed)
+        sensor_ids: List of sensor column names
+        time_column: Name of time column
+        threshold: Absolute amplitude threshold for event window detection
+        sample_period: Samples to extend window after each crossing
+                       (same parameter as filterby_threshold, default 300)
+ 
+    Returns:
+        Dict mapping sensor_id -> list of
+        (first_peak_time, dominant_peak_time, first_peak_amplitude, dominant_peak_amplitude)
+    """
+    results = {}
+ 
+    for sensor_id in sensor_ids:
+        sensor_series = pd.Series(df[sensor_id].values, dtype=float)
+        raw_signal    = sensor_series.to_numpy()
+        time_series   = df[time_column]               # pandas Series
+        events        = []
+ 
+        # Step 1: get event mask using existing _get_filtered_mask
+        mask = _get_filtered_mask(sensor_series, threshold, sample_period)
+ 
+        # Step 2: find contiguous True regions (each = one event window)
+        diff   = np.diff(mask.astype(int))
+        starts = np.where(diff == 1)[0] + 1       # False->True transitions
+        ends   = np.where(diff == -1)[0] + 1       # True->False transitions
+ 
+        # Handle edge cases: mask starts or ends with True
+        if mask[0]:
+            starts = np.insert(starts, 0, 0)
+        if mask[-1]:
+            ends = np.append(ends, len(mask))
+ 
+        # Step 3: within each event window, find extrema on RAW signal
+        for win_start, win_end in zip(starts, ends):
+            seg = raw_signal[win_start:win_end]
+            seg_len = len(seg)
+ 
+            # if seg_len < 2:
+            #     # Single sample — use it directly
+            #     p_idx = win_start
+            #     events.append((
+            #         time_series.iloc[p_idx],
+            #         time_series.iloc[p_idx],
+            #         float(raw_signal[p_idx]),
+            #         float(raw_signal[p_idx]),
+            #     ))
+            #     continue
+ 
+            # --- Collect all extrema (local max + local min) on raw signal ---
+            extrema = []
+ 
+            # k=0: boundary peak — signal already turning at window start.
+            # Positive crossing that immediately drops: seg[0] > 0 and seg[0] > seg[1]
+            # Negative crossing that immediately rises: seg[0] < 0 and seg[0] < seg[1]
+            # If signal is still growing in magnitude, k=0 is NOT a peak.
+            if (seg[0] > 0 and seg[0] > seg[1]) or \
+               (seg[0] < 0 and seg[0] < seg[1]):
+                extrema.append(0)
+ 
+            # k=1..seg_len-2: interior extrema
+            for k in range(1, seg_len - 1):
+                if seg[k] >= seg[k - 1] and seg[k] >= seg[k + 1]:
+                    extrema.append(k)   # local max
+                elif seg[k] <= seg[k - 1] and seg[k] <= seg[k + 1]:
+                    extrema.append(k)   # local min
+ 
+            # Fallback: no extrema found (monotonic signal), use sample
+            # with largest absolute amplitude
+            if not extrema:
+                fallback = int(np.argmax(np.abs(seg)))
+                extrema.append(fallback)
+ 
+            # --- First peak: first extremum in the window ---
+            first_peak_local = extrema[0]
+ 
+            # --- Dominant peak: extremum with largest |amplitude| ---
+            dominant_local = max(extrema, key=lambda idx: abs(seg[idx]))
+ 
+            # Convert to global indices, return signed amplitudes
+            fp_idx = win_start + first_peak_local
+            dp_idx = win_start + dominant_local
+ 
+            events.append((
+                time_series.iloc[fp_idx],          # first_peak_time
+                time_series.iloc[dp_idx],          # dominant_peak_time
+                float(raw_signal[fp_idx]),         # first_peak_amplitude (signed)
+                float(raw_signal[dp_idx]),         # dominant_peak_amplitude (signed)
+            ))
+ 
+        results[sensor_id] = events
+        print(f"[PEAKS] {sensor_id}: {len(events)} event(s) "
+              f"(threshold={threshold}, sample_period={sample_period})")
+ 
+    return results
 
 
 def visualize_all_sensors(sampled_df, sensor_columns, time_column, start_time, duration_mins):
@@ -363,7 +484,7 @@ def multi_sensor_spectrogram(df, sensor_columns, cols=3):
     start_time = df["time"].iloc[0]
     end_time = df["time"].iloc[-1]
     plt.suptitle(f"Spectrogram of {sensor_column}\nStart: {start_time} | End: {end_time}")
-    plt.savefig('graphs/multisensor_spectogram.png')
+    #plt.savefig('graphs/multisensor_spectogram.png')
     plt.show()
 
 def visualize_sensor_histograms(df, sensor_columns, bins=50):
@@ -503,12 +624,12 @@ def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2
     plt.tight_layout()
 
     os.makedirs(os.path.dirname(save_path), exist_ok=True) if os.path.dirname(save_path) else None
-    plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
+    #plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"3D Waterfall plot saved to: {save_path}")
     plt.show()
     memory_usage()
 
-def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, output_path =None) -> None:
+def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, output_path =None) -> None:
 
     invalid = [s for s in sensor_ids if s not in df.columns]
     if invalid:
@@ -516,6 +637,14 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, output_path =Non
  
  
     fig = go.Figure()
+
+     # Assign colors so peak markers match their sensor trace
+    # colors = [
+    #     '#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A',
+    #     '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52',
+    # ]
+
+    #print(peak_data)
  
     for sensor_id in sensor_ids:
         fig.add_trace(go.Scatter(
@@ -525,7 +654,65 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, output_path =Non
             name=sensor_id,
             line=dict(width=1.2),
             opacity=0.85,
+            legendgroup=sensor_id
         ))
+
+         
+        # Peak markers (if available)
+        if peak_data and sensor_id in peak_data:
+            events = peak_data[sensor_id]
+            if not events:
+                continue
+ 
+            fp_times = [e[0] for e in events]   # first_peak_time
+            dp_times = [e[1] for e in events]   # dominant_peak_time
+            fp_amps  = [e[2] for e in events]   # first_peak_amplitude
+            dp_amps  = [e[3] for e in events]   # dominant_peak_amplitude
+ 
+            #print(fp_times)
+            # First peaks — triangle markers
+            fig.add_trace(go.Scatter(
+                x=fp_times,
+                y=fp_amps,
+                mode='markers',
+                name=f'{sensor_id} first peak',
+                marker=dict(
+                    symbol='triangle-up',
+                    size=10,
+                    #color=color,
+                    line=dict(width=1, color='white'),
+                ),
+                legendgroup=sensor_id,
+                showlegend=True,
+                hovertemplate=(
+                    'First Peak<br>'
+                    'Time: %{x}<br>'
+                    'Amplitude: %{y:.6f}<br>'
+                    '<extra></extra>'
+                ),
+            ))
+ 
+            # Dominant peaks — star markers
+            fig.add_trace(go.Scatter(
+                x=dp_times,
+                y=dp_amps,
+                mode='markers',
+                name=f'{sensor_id} dominant peak',
+                marker=dict(
+                    symbol='star',
+                    size=10,
+                   # color=color,
+                    line=dict(width=1, color='white'),
+                ),
+                legendgroup=sensor_id,
+                showlegend=True,
+                hovertemplate=(
+                    'Dominant Peak<br>'
+                    'Time: %{x}<br>'
+                    'Amplitude: %{y:.6f}<br>'
+                    '<extra></extra>'
+                ),
+            ))
  
     plot_title = f"Acceleration Data from Sensors ({len(sensor_ids)} sensors)"
  
@@ -547,9 +734,9 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, output_path =Non
     )
  
     if output_path:
-       #fig.write_html(f'{output_path}/fig.html')
+       fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/first_peak/fig{sensor_id}.html')
        pass
-    
+    fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/first_peak/fig{sensor_id}.html')
     fig.show()
 
 
@@ -566,7 +753,7 @@ def main():
     start_time = args.start_time 
     duration_mins = args.duration_mins
     sensor_columns = args.sensor
-    threshold = 0.0005
+    threshold = 0.002
     sample_period = 300
       
     # Load data using Polars
@@ -579,11 +766,13 @@ def main():
 
     sampled_df = get_only_interested_duration(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
 
-    visualize_overlay(sampled_df,sensor_columns, time_column)
+    peak_data = find_sensor_peaks(sampled_df, sensor_columns, time_column, threshold, sample_period)
+
+    visualize_overlay(sampled_df,sensor_columns, time_column, peak_data)
 
 
     # visualise each sensor in campate for a sample interval
-    #sampled_df = visualize_all_sensors(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
+    #sampled_df = visualize_all_sensors(, sensor_columns, time_column, start_time, duration_mins)
 
     #filtered_df, signal_fil_ratio = filterby_threshold(sampled_df, threshold, sample_period, sensor_columns)
     
