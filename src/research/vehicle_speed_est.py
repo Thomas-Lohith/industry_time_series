@@ -78,9 +78,9 @@ class Config:
 
     # --- Event Extraction (threshold-triggered windowing) ---
     # Amplitude threshold: when |signal| crosses this, an event window opens
-    event_threshold: float = 0.001
+    event_threshold: float = 0.002
     # Duration of the event window after trigger (seconds)
-    event_window_sec: float = 20.0
+    event_window_sec: float = 30.0
     # Pre-trigger time to include before the first threshold crossing (seconds)
     event_pre_trigger_sec: float = 5.0
 
@@ -1105,7 +1105,7 @@ def main():
     config.speed_max_kmh        = args.speed_max
     config.min_shape_similarity = args.b
 
-    # Resolve sensors
+    # Resolve sensorsx
     if args.sensor_group:
         group_info = config.sensor_groups[args.sensor_group]
         sensor_order = group_info['sensors']

@@ -754,7 +754,7 @@ def main():
     duration_mins = args.duration_mins
     sensor_columns = args.sensor
     threshold = 0.002
-    sample_period = 300
+    sample_period = 500
       
     # Load data using Polars
     df, available_sensors, time_column = load_data_polars(path)
