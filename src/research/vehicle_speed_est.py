@@ -1140,3 +1140,5 @@ if __name__ == '__main__':
     main()
 
 # ex: python3 vehicle_speed_estimation.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 4 --sensors 030911FF_x 030911EF_x 03091155_z --b 0.1 --distances 0 32.36 83.91
+
+## python3 vehicle_speed_est.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 4 --sensors 030911FF_x 030911EF_x 03091113_x  --b 0.1 --distances 0 32.36 273.77

@@ -310,6 +310,52 @@ class Span:
         return f"Span('{self.span_id}', sensors={len(self)})"
 
 
+# ── BoundaryJunction ──────────────────────────────────────────────────────
+#
+# @dataclass because it is a plain result record returned by
+# Bridge.find_boundaries().  Holds the sensors at a span junction
+# for cross-sensor sensitivity analysis.
+
+@dataclass
+class BoundaryJunction:
+    """
+    A junction where two consecutive spans meet.
+ 
+    tail_sensors:  sensors at the end of span_a (max distance)
+    entry_sensors: sensors at the start of span_b (min distance)
+    gap:           physical distance between them (entry - tail)
+ 
+    Since distances are global (consecutive along the whole bridge),
+    the gap is simply the distance difference between the closest
+    sensors of the two spans.
+    """
+    span_a: str
+    span_b: str
+    tail_sensors: List[Sensor]
+    entry_sensors: List[Sensor]
+    tail_distance: float        # global distance of tail sensors
+    entry_distance: float       # global distance of entry sensors
+    gap: float                  # entry_distance - tail_distance
+ 
+    def all_sensors(self) -> List[Sensor]:
+        """All sensors at this junction (both sides, both spans)."""
+        return self.tail_sensors + self.entry_sensors
+ 
+    def sensor_ids(self) -> List[str]:
+        return [s.sensor_id for s in self.all_sensors()]
+ 
+    def sensor_numbers(self) -> List[int]:
+        return [s.number for s in self.all_sensors()]
+ 
+    def __repr__(self) -> str:
+        tail_ids = [s.sensor_id for s in self.tail_sensors]
+        entry_ids = [s.sensor_id for s in self.entry_sensors]
+        return (f"BoundaryJunction({self.span_a} -> {self.span_b}, "
+                f"gap={self.gap:.2f}m, "
+                f"tail={tail_ids}, entry={entry_ids})")
+ 
+
+
 # ── Bridge ────────────────────────────────────────────────────────────────
 #
 # Regular class because it manages three internal data structures:
@@ -439,6 +485,96 @@ class Bridge:
     def missing_thresholds(self) -> List[Sensor]:
         return [s for s in self._registry.values() if not s.thresholds.has_any]
 
+    # --- boundary / junction queries ---
+ 
+    def find_boundaries(self, span_order: Optional[List[str]] = None) -> List[BoundaryJunction]:
+        """
+        Find sensors at span junctions (where two spans meet).
+ 
+        Since distances are global (consecutive along the whole bridge),
+        span order is determined by sorting each span's minimum sensor
+        distance.  For each consecutive span pair:
+          - tail sensors  = sensors at max distance in span_N
+          - entry sensors = sensors at min distance in span_N+1
+          - gap           = entry_distance - tail_distance
+ 
+        Args:
+            span_order: optional explicit list of span_ids in physical
+                        order.  If None, order is inferred from sensor
+                        distances (span with lowest min-distance first).
+ 
+        Returns:
+            List of BoundaryJunction, one per consecutive span pair.
+        """
+        if span_order is None:
+            # Infer order: sort spans by the minimum sensor distance
+            span_min_dist = {}
+            for sid, sp in self._spans.items():
+                if sp.unique_distances:
+                    span_min_dist[sid] = sp.unique_distances[0]
+            span_order = sorted(span_min_dist, key=lambda s: span_min_dist[s])
+ 
+        junctions = []
+        for i in range(len(span_order) - 1):
+            sid_a = span_order[i]
+            sid_b = span_order[i + 1]
+            sp_a = self._spans.get(sid_a)
+            sp_b = self._spans.get(sid_b)
+            if sp_a is None or sp_b is None:
+                continue
+ 
+            # tail of span_a: sensors at max distance
+            max_dist_a = max(s.relative_distance for s in sp_a)
+            tail = sp_a.at_distance(max_dist_a)
+ 
+            # entry of span_b: sensors at min distance
+            min_dist_b = min(s.relative_distance for s in sp_b)
+            entry = sp_b.at_distance(min_dist_b)
+ 
+            gap = min_dist_b - max_dist_a
+
+           
+
+            
+ 
+            junctions.append(BoundaryJunction(
+                span_a=sid_a, span_b=sid_b,
+                tail_sensors=tail, entry_sensors=entry,
+                tail_distance=max_dist_a, entry_distance=min_dist_b,
+                gap=gap,
+            ))
+ 
+        return junctions
+ 
+    def print_boundaries(self, span_order: Optional[List[str]] = None) -> None:
+        """Print a readable summary of all span boundary junctions."""
+        junctions = self.find_boundaries(span_order)
+        if not junctions:
+            print("No boundary junctions found.")
+            return
+ 
+        print(f"Span boundary junctions ({len(junctions)} found):")
+        print("-" * 70)
+        for j in junctions:
+            print(f"  {j.span_a} -> {j.span_b}  (gap = {j.gap:.2f}m)")
+            print(f"    Tail  (dist={j.tail_distance:.2f}m):")
+            for s in j.tail_sensors:
+                num = f"#{s.number}" if s.number >= 0 else ""
+                t_info = ""
+                if s.thresholds.has_any:
+                    t_info = f"  thresholds: {s.thresholds}"
+                print(f"      {s.sensor_id:20s} {num:>5s}  side={s.side or '?':6s}{t_info}")
+            print(f"    Entry (dist={j.entry_distance:.2f}m):")
+            for s in j.entry_sensors:
+                num = f"#{s.number}" if s.number >= 0 else ""
+                t_info = ""
+                if s.thresholds.has_any:
+                    t_info = f"  thresholds: {s.thresholds}"
+                print(f"      {s.sensor_id:20s} {num:>5s}  side={s.side or '?':6s}{t_info}")
+            print()
+
+
+
     # --- iteration ---
     def __iter__(self) -> Iterator[Span]:
         for sid in sorted(self._spans):
@@ -520,7 +656,7 @@ def load_bridge(
     different bridges with different CSV formats.
     """
     PC = {
-        "sensor_id": "vertical", "span_id": "SECTION",
+        "sensor_id": "vertical", "span_id": "SPAN",
         "relative_distance": "DIST_M",
         "number": "sensor_id",     # optional: human-friendly sensor number
         "side": "side", "axis": "axis",
@@ -620,6 +756,18 @@ def main():
     sensors_list =  Bridge.resolve(sensors)
     for i in sensors_list:
         print(i)
+
+    junctions = Bridge.find_boundaries()
+
+    all_boundary_ids = [s for j in junctions for s in j.sensor_ids()]
+    all_boundary_nums = [s for j in junctions for s in j.sensor_numbers()]
+
+    print(all_boundary_ids)
+    print(all_boundary_nums)
+    
+    for j in junctions:
+        print(j)
+        #print(j.span_a, j.span_b,j.tail_distance, j.entry_distance)
 
 if __name__ == "__main__":
     main()

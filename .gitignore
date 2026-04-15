@@ -11,6 +11,8 @@ src/dataset/old_thresholds_abs.csv
 src/dataset/thresholds_abs.csv
 src/research/graphs
 
+src/shared/config.py
+
 src/analysis/graphs/
 
 src/__pycache__
