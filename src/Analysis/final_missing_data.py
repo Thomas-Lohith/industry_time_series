@@ -543,7 +543,7 @@ if __name__ == "__main__":
     OUTPUT_DIR = '/home/c8x-98x/industry_time_series/src/results/missing_stats'
     
     # Visualization options
-    GENERATE_INTERACTIVE = True  # Set to False to skip Plotly visualizations
+    GENERATE_INTERACTIVE = False  # Set to False to skip Plotly visualizations
     OUTAGE_THRESHOLD = 0.1  # 10% - adjust as needed
     
     # Create output directory if it doesn't exist

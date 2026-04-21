@@ -21,6 +21,9 @@ src/filtering/__pycache__
 src/research/__pycache__
 src/shared/__pycache__
 
-
+src/research/bridge_export.json
 
 src/filtering/.DS_Store
+src/research/timestamps_collection.csv
+
+src/research/res.csv

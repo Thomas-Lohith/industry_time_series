@@ -312,203 +312,6 @@ def process_vehicle_event(
     
     return result
 
-# =========================================================
-# VISUALIZATION FUNCTIONS
-# =========================================================
-def extract_sensor_columns(df):
-    """Extract sensor column information from results dataframe."""
-    first_peak_cols = {}
-    peak_cols = {}
-    sensor_order = []
-    
-    for col in df.columns:
-        if col.endswith('_first_peak'):
-            sensor_id = col.replace('_first_peak', '')
-            first_peak_cols[sensor_id] = col
-            if sensor_id not in sensor_order:
-                sensor_order.append(sensor_id)
-        elif col.endswith('_peak') and not col.endswith('_first_peak'):
-            sensor_id = col.replace('_peak', '')
-            peak_cols[sensor_id] = col
-    
-    return sensor_order, first_peak_cols, peak_cols
- 
- 
-def plot_timeline(df, sensor_list, first_peak_cols, peak_cols, output_path):
-    """
-    Timeline plot showing when each vehicle was detected by each sensor.
-    
-    Y-axis: Vehicles, X-axis: Time
-    Blue dots = first_peak, Red squares = dominant_peak
-    """
-    print("\n  Generating timeline plot...")
-    
-    fig, ax = plt.subplots(figsize=(16, max(8, len(df) * 0.5)))
-    
-    y_positions = {vehicle_id: idx for idx, vehicle_id in enumerate(df['vehicle_id'])}
-    all_times = []
-    
-    # Plot detections
-    for idx, row in df.iterrows():
-        vehicle_id = row['vehicle_id']
-        y_pos = y_positions[vehicle_id]
-        
-        # First peaks (blue)
-        for sensor_id in sensor_list:
-            if sensor_id in first_peak_cols:
-                timestamp = row[first_peak_cols[sensor_id]]
-                if pd.notna(timestamp):
-                    time_obj = pd.to_datetime(timestamp)
-                    all_times.append(time_obj)
-                    ax.plot(time_obj, y_pos, 'o', color='blue', markersize=6, alpha=0.6)
-        
-        # Dominant peaks (red)
-        for sensor_id in sensor_list:
-            if sensor_id in peak_cols:
-                timestamp = row[peak_cols[sensor_id]]
-                if pd.notna(timestamp):
-                    time_obj = pd.to_datetime(timestamp)
-                    all_times.append(time_obj)
-                    ax.plot(time_obj, y_pos, 's', color='red', markersize=5, alpha=0.6)
-    
-    # Configure axes
-    ax.set_yticks(range(len(df)))
-    ax.set_yticklabels(df['vehicle_id'])
-    ax.set_ylabel('Vehicle Event', fontsize=12, fontweight='bold')
-    
-    if all_times:
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
-    
-    ax.set_xlabel('Time', fontsize=12, fontweight='bold')
-    ax.set_title('Vehicle Detection Timeline', fontsize=14, fontweight='bold', pad=20)
-    ax.grid(True, alpha=0.3, linestyle='--')
-    
-    # Legend
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', 
-               markersize=8, label='First Peak', alpha=0.6),
-        Line2D([0], [0], marker='s', color='w', markerfacecolor='red', 
-               markersize=7, label='Dominant Peak', alpha=0.6)
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=10)
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"  ✓ Timeline saved: {output_path}")
-    plt.close()
- 
- 
-def plot_sensor_progression(df, sensor_list, first_peak_cols, peak_cols, output_path):
-    """
-    Sensor progression plot showing vehicle movement through sensors.
-    
-    X-axis: Sensor index, Y-axis: Time since first detection (seconds)
-    Solid lines = first_peak, Dashed lines = dominant_peak
-    """
-    print("\n  Generating sensor progression plot...")
-    
-    fig, ax = plt.subplots(figsize=(16, 10))
-    colors = plt.cm.tab20(np.linspace(0, 1, len(df)))
-    
-    # Plot each vehicle
-    for idx, row in df.iterrows():
-        vehicle_id = row['vehicle_id']
-        color = colors[idx]
-        
-        # Collect first_peak times
-        first_peak_times = []
-        first_peak_indices = []
-        
-        for sensor_idx, sensor_id in enumerate(sensor_list):
-            if sensor_id in first_peak_cols:
-                timestamp = row[first_peak_cols[sensor_id]]
-                if pd.notna(timestamp):
-                    time_obj = pd.to_datetime(timestamp)
-                    first_peak_times.append(time_obj)
-                    first_peak_indices.append(sensor_idx)
-        
-        # Collect dominant_peak times
-        dominant_peak_times = []
-        dominant_peak_indices = []
-        
-        for sensor_idx, sensor_id in enumerate(sensor_list):
-            if sensor_id in peak_cols:
-                timestamp = row[peak_cols[sensor_id]]
-                if pd.notna(timestamp):
-                    time_obj = pd.to_datetime(timestamp)
-                    dominant_peak_times.append(time_obj)
-                    dominant_peak_indices.append(sensor_idx)
-        
-        # Convert to relative times
-        if first_peak_times:
-            reference_time = min(first_peak_times)
-            
-            # First peak line (solid)
-            relative_first = [(t - reference_time).total_seconds() for t in first_peak_times]
-            ax.plot(first_peak_indices, relative_first, '-o', 
-                   color=color, linewidth=2, markersize=6,
-                   label=f'{vehicle_id} (first)', alpha=0.7)
-            
-            # Dominant peak line (dashed)
-            if dominant_peak_times:
-                relative_dominant = [(t - reference_time).total_seconds() for t in dominant_peak_times]
-                ax.plot(dominant_peak_indices, relative_dominant, '--s', 
-                       color=color, linewidth=1.5, markersize=5,
-                       label=f'{vehicle_id} (dominant)', alpha=0.5)
-    
-    # Configure axes
-    ax.set_xticks(range(len(sensor_list)))
-    ax.set_xticklabels(sensor_list, rotation=90, ha='right', fontsize=8)
-    ax.set_xlabel('Sensor (Physical Order)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Time Since First Detection (seconds)', fontsize=12, fontweight='bold')
-    ax.set_title('Vehicle Progression Through Sensors', fontsize=14, fontweight='bold', pad=20)
-    ax.grid(True, alpha=0.3, linestyle='--')
-    
-    # Legend
-    if len(df) <= 10:
-        ax.legend(loc='best', fontsize=9)
-    else:
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"  ✓ Progression saved: {output_path}")
-    plt.close()
- 
- 
-def generate_visualizations(results_csv, output_dir):
-    """Generate timeline and progression plots from results CSV."""
-    print("\n" + "="*60)
-    print("GENERATING VISUALIZATIONS")
-    print("="*60)
-    
-    # Load results
-    df = pd.read_csv(results_csv)
-    print(f"Loaded {len(df)} vehicle events")
-    
-    # Extract sensor info
-    sensor_list, first_peak_cols, peak_cols = extract_sensor_columns(df)
-    print(f"Found {len(sensor_list)} sensors")
-    
-    # Create output directory
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Generate plots
-    timeline_path = output_dir / 'vehicle_timeline.png'
-    plot_timeline(df, sensor_list, first_peak_cols, peak_cols, timeline_path)
-    
-    progression_path = output_dir / 'vehicle_progression.png'
-    plot_sensor_progression(df, sensor_list, first_peak_cols, peak_cols, progression_path)
-    
-    print("\n" + "="*60)
-    print("Visualizations complete!")
-    print("="*60)
- 
-
 
 # =========================================================
 # MAIN
@@ -549,8 +352,8 @@ def main():
     parser.add_argument(
         '--sample_period',
         type=int,
-        default=300,
-        help='Sample period for event windowing (default: 300)'
+        default=500,
+        help='Sample period for event windowing (default: 500)'
     )
     
     parser.add_argument(
@@ -634,3 +437,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+    #ex: python3 cross_sensitivity_analysis.py --input timestamps_collection.csv --output res.csv --root_folder /Users/thomas/Data/Data_sensors
