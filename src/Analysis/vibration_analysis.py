@@ -1,4 +1,5 @@
 import html
+from turtle import width
 from typing import Optional
 import pandas as pd
 import polars as pl
@@ -13,6 +14,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+from src.shared.bridge_model import load_bridge
+from src.shared.config import position_csv, threshold_csv, delimiter
+
 
 def memory_usage():
     """Print current memory usage"""
@@ -85,6 +90,8 @@ def parse_sensor_ids(sensor_str, available_sensors):
     
     # Parse comma-separated values
     requested = [s.strip() for s in sensor_str.split(',')]
+
+    
     
     # Validate each sensor exists
     invalid = [s for s in requested if s not in available_sensors]
@@ -95,6 +102,18 @@ def parse_sensor_ids(sensor_str, available_sensors):
         )
     return requested
 
+# =========================================================
+# THRESHOLD EXTRACTION
+# =========================================================
+def extract_sensor_thresholds(bridge, sensor_ids):
+    """Extract sensor-specific trigger thresholds from bridge model."""
+    sensor_thresholds = {}
+    
+    for sensor_id in sensor_ids:
+        sensor = bridge[sensor_id]  # Sensor object
+        sensor_thresholds[sensor_id] = sensor.trigger_threshold
+    
+    return sensor_thresholds
 
 def _get_filtered_mask(sensor_series: pd.Series, threshold: float, sample_period: int) -> np.ndarray:
     """
@@ -251,34 +270,10 @@ def find_sensor_peaks(
     df: pd.DataFrame,
     sensor_ids: str,
     time_column: str,
-    threshold: float,
+    sensor_thresholds: float,
     sample_period
 ):
-    """
-    Find one first peak and one dominant peak per event window.
- 
-    Uses _get_filtered_mask() to group nearby threshold crossings into
-    single event windows (via sample_period extension), then within each
-    contiguous window finds extrema on the RAW signal (not abs):
-      - first_peak:    first extremum (local max or min) in the window,
-                       including the very first sample (boundary check)
-      - dominant_peak: extremum with the largest absolute amplitude
- 
-    Peak detection uses raw signed values so that a positive peak followed
-    by a larger negative swing doesn't get missed.
- 
-    Args:
-        df: DataFrame with time and sensor columns (DC already removed)
-        sensor_ids: List of sensor column names
-        time_column: Name of time column
-        threshold: Absolute amplitude threshold for event window detection
-        sample_period: Samples to extend window after each crossing
-                       (same parameter as filterby_threshold, default 300)
- 
-    Returns:
-        Dict mapping sensor_id -> list of
-        (first_peak_time, dominant_peak_time, first_peak_amplitude, dominant_peak_amplitude)
-    """
+
     results = {}
  
     for sensor_id in sensor_ids:
@@ -286,6 +281,9 @@ def find_sensor_peaks(
         raw_signal    = sensor_series.to_numpy()
         time_series   = df[time_column]               # pandas Series
         events        = []
+
+         # Get sensor-specific threshold
+        threshold = sensor_thresholds.get(sensor_id, 0.002)
  
         # Step 1: get event mask using existing _get_filtered_mask
         mask = _get_filtered_mask(sensor_series, threshold, sample_period)
@@ -638,12 +636,6 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
  
     fig = go.Figure()
 
-     # Assign colors so peak markers match their sensor trace
-    # colors = [
-    #     '#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A',
-    #     '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52',
-    # ]
-
     #print(peak_data)
  
     for sensor_id in sensor_ids:
@@ -683,7 +675,7 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
                     line=dict(width=1, color='white'),
                 ),
                 legendgroup=sensor_id,
-                showlegend=True,
+                showlegend=False,
                 hovertemplate=(
                     'First Peak<br>'
                     'Time: %{x}<br>'
@@ -705,7 +697,7 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
                     line=dict(width=1, color='white'),
                 ),
                 legendgroup=sensor_id,
-                showlegend=True,
+                showlegend=False,
                 hovertemplate=(
                     'Dominant Peak<br>'
                     'Time: %{x}<br>'
@@ -730,7 +722,8 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
             xanchor='center',
             x=0.5,
         ),
-        height=600,
+        height=900,
+        #width=800
     )
  
     if output_path:
@@ -753,20 +746,54 @@ def main():
     start_time = args.start_time 
     duration_mins = args.duration_mins
     sensor_columns = args.sensor
+
     threshold = 0.002
     sample_period = 500
-      
+
+    # Load bridge model
+    print("Loading bridge model...")
+    bridge = load_bridge(position_csv, threshold_csv, delimiter=delimiter)
+    junctions = bridge.find_boundaries()
+    
+    # Get all boundary sensor IDs (in physical order)
+    boundary_sensors = [s for j in junctions for s in j.sensor_ids()]
+    boundary_nums = [s for j in junctions for s in j.sensor_numbers()]
+    
+    # Remove duplicates while preserving order
+    boundary_sensors = list(dict.fromkeys(boundary_sensors))
+    boundary_nums = list(dict.fromkeys(boundary_nums))
+    
+    print(f"Boundary sensors (after deduplication): {len(boundary_sensors)}")
+    
+    # Extract sensor-specific trigger thresholds from bridge model
+    print("\nExtracting sensor-specific trigger thresholds...")
+    sensor_thresholds = extract_sensor_thresholds(bridge, boundary_sensors)
+    
+    # Show threshold statistics
+    threshold_values = list(sensor_thresholds.values())
+    print(f"Loaded {len(sensor_thresholds)} sensor thresholds")
+    print(f"Threshold range: {min(threshold_values):.6f} to {max(threshold_values):.6f}")
+    print(f"Threshold mean: {np.mean(threshold_values):.6f}")
+
+
     # Load data using Polars
     df, available_sensors, time_column = load_data_polars(path)
+    
+    
+    
+    if sensor_columns == None:
+        sensor_columns = boundary_sensors
+    else:
+        sensor_columns = parse_sensor_ids(sensor_columns, available_sensors)
 
-    sensor_columns = parse_sensor_ids(sensor_columns, available_sensors)
+
     
     # Process the filtered data
     no_dc_df = filter_dc_by_mean(df, sensor_columns)
 
     sampled_df = get_only_interested_duration(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
 
-    peak_data = find_sensor_peaks(sampled_df, sensor_columns, time_column, threshold, sample_period)
+    peak_data = find_sensor_peaks(sampled_df, sensor_columns, time_column, sensor_thresholds, sample_period)
 
     visualize_overlay(sampled_df,sensor_columns, time_column, peak_data)
 

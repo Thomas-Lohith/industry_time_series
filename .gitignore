@@ -26,4 +26,8 @@ src/research/bridge_export.json
 src/filtering/.DS_Store
 src/research/timestamps_collection.csv
 
-src/research/res.csv
+
+
+src/research/scripts/res.csv
+
+src/research/scripts/graphs

@@ -207,6 +207,7 @@ class Sensor:
     side: str = ""          # e.g. "left", "right" -- free-form from CSV
     axis: str = ""          # e.g. "x", "z" -- from CSV, NOT from sensor ID
     thresholds: ThresholdConfig = field(default_factory=ThresholdConfig)
+    trigger_threshold: float = 0.002  # Peak detection threshold for this sensor
     extra: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -664,6 +665,7 @@ def load_bridge(
     TC = {
         "sensor_id": "sensor",
         "mean_abs": "mean", "std": "std",
+        "trigger_threshold": "trigger_threshold",  # NEW
         "threshold_1sigma": "threshold_1sigma",
         "threshold_2sigma": "threshold_2sigma",
         "threshold_3sigma": "threshold_3sigma",
@@ -710,6 +712,11 @@ def load_bridge(
         sensor = created.get(sid)
         if sensor is None:
             continue
+
+            # Load trigger threshold (NEW)
+        trigger_col = TC["trigger_threshold"]
+        if trigger_col in row:
+            sensor.trigger_threshold = _safe_float(row[trigger_col], default=0.002)
 
         mean_abs = _safe_float(row.get(TC["mean_abs"], "0"))
         std = _safe_float(row.get(TC["std"], "0"))
@@ -762,7 +769,7 @@ def main():
     all_boundary_ids = [s for j in junctions for s in j.sensor_ids()]
     all_boundary_nums = [s for j in junctions for s in j.sensor_numbers()]
 
-    print(all_boundary_ids)
+    #print(all_boundary_ids)
     print(all_boundary_nums)
     
     for j in junctions:

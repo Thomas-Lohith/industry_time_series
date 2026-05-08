@@ -59,6 +59,7 @@ def generate_frequency_anomaly(signal: np.ndarray, offset_hz: float,
     fft_resampled = interp_real(new_freqs) + 1j * interp_imag(new_freqs)
     
     return irfft(fft_resampled, n=new_n_samples)
+    
 
 
 def plot_anomaly_comparison(original: np.ndarray, anomaly: np.ndarray, 
@@ -153,9 +154,9 @@ def main():
         new_fs1 = len(anomaly1) / (len(original) / 100.0)
         plot_anomaly_comparison(original, anomaly1, fs=100.0, offset_hz=7.0, anomaly_fs=new_fs1)
 
-        # Strategy 2: Same sample count, stretched time
-        anomaly2 = generate_frequency_anomaly(original, offset_hz=7.0, compression_coef=0.9, keep_duration=False)
-        plot_anomaly_comparison(original, anomaly2, fs=100.0, offset_hz=7.0, anomaly_fs=100.0)
+        # # Strategy 2: Same sample count, stretched time
+        # anomaly2 = generate_frequency_anomaly(original, offset_hz=7.0, compression_coef=0.9, keep_duration=False)
+        # plot_anomaly_comparison(original, anomaly2, fs=100.0, offset_hz=7.0, anomaly_fs=100.0)
 
 
 
@@ -167,3 +168,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    #ex: python3 synthetic_anomalies.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 5 --sensor 03091203_x

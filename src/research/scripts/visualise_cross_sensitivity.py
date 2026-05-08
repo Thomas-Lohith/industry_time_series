@@ -251,7 +251,7 @@ def main():
     
     if args.progression:
         plot_sensor_progression(df, sensor_list, first_peak_cols, peak_cols, 
-                               sensor_numbers, output_dir / 'vehicle_progression_2.png')
+                               sensor_numbers, output_dir / 'vehicle_progression_trial.png')
     
     print("\n" + "="*60)
     print("Visualization complete!")
