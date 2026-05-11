@@ -57,64 +57,6 @@ def extract_sensor_columns(df, boundary_sensors):
     return sensor_order, first_peak_cols, peak_cols
 
 
-def plot_timeline(df, sensor_list, first_peak_cols, peak_cols, output_path):
-    """Timeline plot: Y=vehicles, X=time, Blue=first_peak, Red=dominant_peak"""
-    print("\n  Generating timeline plot...")
-    
-    fig, ax = plt.subplots(figsize=(16, max(8, len(df) * 0.5)))
-    y_positions = {vehicle_id: idx for idx, vehicle_id in enumerate(df['vehicle_id'])}
-    all_times = []
-    
-    for idx, row in df.iterrows():
-        vehicle_id = row['vehicle_id']
-        y_pos = y_positions[vehicle_id]
-        
-        # First peaks (blue)
-        for sensor_id in sensor_list:
-            if sensor_id in first_peak_cols:
-                timestamp = row[first_peak_cols[sensor_id]]
-                if pd.notna(timestamp):
-                    time_obj = pd.to_datetime(timestamp)
-                    all_times.append(time_obj)
-                    ax.plot(time_obj, y_pos, 'o', color='blue', markersize=6, alpha=0.6)
-        
-        # Dominant peaks (red)
-        for sensor_id in sensor_list:
-            if sensor_id in peak_cols:
-                timestamp = row[peak_cols[sensor_id]]
-                if pd.notna(timestamp):
-                    time_obj = pd.to_datetime(timestamp)
-                    all_times.append(time_obj)
-                    ax.plot(time_obj, y_pos, 's', color='red', markersize=5, alpha=0.6)
-    
-    ax.set_yticks(range(len(df)))
-    ax.set_yticklabels(df['vehicle_id'])
-    ax.set_ylabel('Vehicle Event', fontsize=12, fontweight='bold')
-    
-    if all_times:
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
-    
-    ax.set_xlabel('Time', fontsize=12, fontweight='bold')
-    ax.set_title('Vehicle Detection Timeline', fontsize=14, fontweight='bold', pad=20)
-    ax.grid(True, alpha=0.3, linestyle='--')
-    
-    # Legend
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', 
-               markersize=8, label='First Peak', alpha=0.6),
-        Line2D([0], [0], marker='s', color='w', markerfacecolor='red', 
-               markersize=7, label='Dominant Peak', alpha=0.6)
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=10)
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"  ✓ Timeline saved: {output_path}")
-    plt.close()
-
 
 def plot_sensor_progression(df, sensor_list, first_peak_cols, peak_cols, sensor_numbers, output_path):
     """Progression plot: X=sensor index, Y=time since first detection"""
@@ -244,10 +186,7 @@ def main():
     sensor_list, first_peak_cols, peak_cols = extract_sensor_columns(df, boundary_sensors)
     print(f"Found {len(sensor_list)} sensors in results")
     
-    # Generate plots
-    if args.timeline:
-        plot_timeline(df, sensor_list, first_peak_cols, peak_cols, 
-                     output_dir / 'vehicle_timeline.png')
+
     
     if args.progression:
         plot_sensor_progression(df, sensor_list, first_peak_cols, peak_cols, 
@@ -260,3 +199,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+#ex:python3 visualise_cross_sensitivity.py --input res.csv --output /Users/thomas/Desktop/github_repos/industry_time_series/src/research/scr
