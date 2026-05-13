@@ -53,7 +53,7 @@ WHY EACH OOP CONCEPT IS USED
 
 7. Column-name remapping  (pos_cols / thr_cols dicts)
    Different bridges may use different CSV headers ("distanza" vs
-   "relative_distance").  Remapping via a dict avoids hardcoding any
+   "distance").  Remapping via a dict avoids hardcoding any
    particular bridge's naming convention.
 
 8. extra dict on Sensor
@@ -202,7 +202,7 @@ class Sensor:
     """
     sensor_id: str
     span_id: str
-    relative_distance: float
+    distance: float
     number: int = -1        # human-friendly number (e.g. 99), -1 = not assigned
     side: str = ""          # e.g. "left", "right" -- free-form from CSV
     axis: str = ""          # e.g. "x", "z" -- from CSV, NOT from sensor ID
@@ -213,19 +213,19 @@ class Sensor:
     @property
     def location_key(self) -> Tuple[str, float]:
         """(span_id, distance) for grouping co-located sensors."""
-        return (self.span_id, self.relative_distance)
+        return (self.span_id, self.distance)
 
     def shares_position_with(self, other: Sensor) -> bool:
         """True if same span + same distance but different sensor (opposite side)."""
         return (self.span_id == other.span_id
-                and abs(self.relative_distance - other.relative_distance) < 1e-6
+                and abs(self.distance - other.distance) < 1e-6
                 and self.sensor_id != other.sensor_id)
 
     def to_dict(self) -> dict:
         return {
             "sensor_id": self.sensor_id, "number": self.number,
             "span_id": self.span_id,
-            "relative_distance": self.relative_distance,
+            "distance": self.distance,
             "side": self.side, "axis": self.axis,
             "thresholds": self.thresholds.to_dict(), "extra": self.extra,
         }
@@ -235,7 +235,7 @@ class Sensor:
         if self.number >= 0:
             parts.append(f"#{self.number}")
         parts.append(f"span='{self.span_id}'")
-        parts.append(f"dist={self.relative_distance:.3f}")
+        parts.append(f"dist={self.distance:.3f}")
         if self.side:
             parts.append(f"side={self.side}")
         if self.axis:
@@ -267,7 +267,7 @@ class Span:
 
     def _sort(self) -> None:
         if self._dirty:
-            self._sensors.sort(key=lambda s: (s.relative_distance, s.side))
+            self._sensors.sort(key=lambda s: (s.distance, s.side))
             self._dirty = False
 
     @property
@@ -282,12 +282,12 @@ class Span:
 
     @property
     def unique_distances(self) -> List[float]:
-        return sorted({s.relative_distance for s in self._sensors})
+        return sorted({s.distance for s in self._sensors})
 
     def at_distance(self, distance: float, tol: float = 1e-6) -> List[Sensor]:
         """All sensors at a given distance (both sides of the bridge)."""
         return [s for s in self._sensors
-                if abs(s.relative_distance - distance) < tol]
+                if abs(s.distance - distance) < tol]
 
     def by_side(self, side: str) -> List[Sensor]:
         self._sort()
@@ -297,7 +297,7 @@ class Span:
         """Positions where >1 sensor sits (opposite-side pairs)."""
         groups: Dict[float, List[Sensor]] = defaultdict(list)
         for s in self._sensors:
-            groups[s.relative_distance].append(s)
+            groups[s.distance].append(s)
         return {d: ss for d, ss in groups.items() if len(ss) > 1}
 
     def __len__(self) -> int:
@@ -525,11 +525,11 @@ class Bridge:
                 continue
  
             # tail of span_a: sensors at max distance
-            max_dist_a = max(s.relative_distance for s in sp_a)
+            max_dist_a = max(s.distance for s in sp_a)
             tail = sp_a.at_distance(max_dist_a)
  
             # entry of span_b: sensors at min distance
-            min_dist_b = min(s.relative_distance for s in sp_b)
+            min_dist_b = min(s.distance for s in sp_b)
             entry = sp_b.at_distance(min_dist_b)
  
             gap = min_dist_b - max_dist_a
@@ -603,7 +603,7 @@ class Bridge:
                 t = f"{s.thresholds}" if s.thresholds.has_any else "no thresholds"
                 num = f"#{s.number:<4d}" if s.number >= 0 else "#?   "
                 lines.append(
-                    f"    {num} {s.sensor_id:20s}  dist={s.relative_distance:7.2f}  "
+                    f"    {num} {s.sensor_id:20s}  dist={s.distance:7.2f}  "
                     f"side={s.side or '?':6s}  axis={s.axis or '?':3s}  {t}")
         missing = self.missing_thresholds()
         if missing:
@@ -643,7 +643,7 @@ def load_bridge(
     """
     Build a Bridge from two CSVs.
 
-    Position CSV  (required: sensor_id, span_id, relative_distance)
+    Position CSV  (required: sensor_id, span_id, distance)
                   (optional: side, axis, ... extras captured automatically)
 
     Threshold CSV (required: sensor_id, threshold_1sigma, threshold_2sigma,
@@ -658,7 +658,7 @@ def load_bridge(
     """
     PC = {
         "sensor_id": "vertical", "span_id": "SPAN",
-        "relative_distance": "DIST_M",
+        "distance": "DIST_M",
         "number": "sensor_id",     # optional: human-friendly sensor number
         "side": "side", "axis": "axis",
     }
@@ -692,7 +692,7 @@ def load_bridge(
         sensor = Sensor(
             sensor_id=sid,
             span_id=row[PC["span_id"]].strip(),
-            relative_distance=_safe_float(row[PC["relative_distance"]]),
+            distance=_safe_float(row[PC["distance"]]),
             number=num,
             side=row.get(PC["side"], "").strip(),
             axis=row.get(PC["axis"], "").strip(),
@@ -745,8 +745,8 @@ def main():
 
     parser.add_argument('--sensor_num', type = str, help ='provide the sensor number (comma-separated for multiple)')
 
-    position_csv = "/Users/thomas/Desktop/github_repos/industry_time_series/src/dataset/sensors.csv"
-    threshold_csv = "/Users/thomas/Desktop/github_repos/industry_time_series/src/dataset/thresholds_abs.csv"
+    position_csv = "/home/thomas/industry_time_series/src/dataset/sensors.csv"
+    threshold_csv = "/home/thomas/industry_time_series/src/dataset/thresholds_abs.csv"
     delimiter: str = ","
     #load_bridge(position_csv, threshold_csv, delimiter=delimiter)
 

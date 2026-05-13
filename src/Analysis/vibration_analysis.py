@@ -25,6 +25,19 @@ def memory_usage():
     mem = process.memory_info().rss / 1024 / 1024  # Convert to MB
     print(f"Current memory usage: {mem:.2f} MB")
 
+
+def find_csv_file(root_folder, date_str, hour):
+    """Locate the CSV file for a given date and hour inside root_folder."""
+    formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+
+    csv_folder = os.path.join(root_folder, date_str, date_str, "csv_acc")
+    for fname in os.listdir(csv_folder):
+        if (fname.startswith(f"M001_{formatted_date}_{hour:02d}-00-00_")
+                and f"_int-{hour+1}_" in fname and fname.endswith("_th.csv")):
+            return os.path.join(csv_folder, fname)
+    raise FileNotFoundError(f"No matching CSV file found for {date_str} hour {hour}")
+
+
 def load_data_polars(filepath):
     """Load parquet file using Polars for memory efficiency"""
     print("Loading data with Polars...")
@@ -64,23 +77,6 @@ def load_data_polars(filepath):
         print(f"Found {len(sensor_columns)} sensor columns:")
         print(f"Using '{time_column}' as the time column")
     
-    # # sensors 99,100,101
-    # campate2_sensor_columns = ['030911D2_x', '03091005_x', '0309101F_x']
-    # #sensors in order 53->52->51
-    # campate1b_sensor_columns = ['0309100F_x', '030910F6_x', '0309101E_x']
-    # #sensors in order 106->105->104
-    # campate1a_sensor_columns = ['030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '03091207_x', '03091119_z'] 
-    # #sensor column on whole brideg
-    # all_campate_sensor_columns = ['030911FF_x', '03091017_z', '03091113_x', '0309123B_z', '03091111_z', '03091003_x'] 
-
-    # first_campata = [ '030911FF_x', '030911EF_x', '03091200_x', '03091155_z', '0309100F_x', '030910F6_x', '0309101E_x', '03091018_z']
-
-    # # whole bridge overview: 106->93->83->78->67->54
-    # whole_bridge_overview = [ '030911FF_x', '0309113F_z', '0309123B_z', '03091204_x', '03091111_z', '03091003_x']
-    #  #first campate sensors in order 106->105->104->53->52->51
-    # #sensor_columns = [col for col in campate1a_sensor_columns if col in df.columns]  
-    # sensor_columns = [col for col in whole_bridge_overview if col in df.columns]
-    
     memory_usage()
     return df, sensor_columns, time_column
 
@@ -91,8 +87,6 @@ def parse_sensor_ids(sensor_str, available_sensors):
     # Parse comma-separated values
     requested = [s.strip() for s in sensor_str.split(',')]
 
-    
-    
     # Validate each sensor exists
     invalid = [s for s in requested if s not in available_sensors]
     if invalid:
@@ -141,7 +135,7 @@ def _get_filtered_mask(sensor_series: pd.Series, threshold: float, sample_period
             mask[start:end] = True
         else:
             i += 1
-
+    
     return mask
 
 
@@ -209,7 +203,6 @@ def filterby_threshold(
 
     fig.suptitle('Threshold Filtering – All Sensors', fontsize=13, fontweight='bold')
     plt.tight_layout()
-    #plt.savefig('ETFA_multisensor_whole_bridge_overview.png', dpi=150)
     plt.show()
 
     return filtered_df, ratios
@@ -256,8 +249,6 @@ def get_only_interested_duration(df, sensor_columns, time_column, start_time, du
     #limit to the specific time frame
     sampled_df = sampled_df[(sampled_df[time_column]>=start_time)&(sampled_df[time_column]<=end_time)]
     
-    #print('intereseted time dataframe-start', sampled_df.head(1))
-    #print('limited time frame dataframe-end', sampled_df.tail(1))
     memory_usage()
 
     return sampled_df
@@ -284,10 +275,13 @@ def find_sensor_peaks(
 
          # Get sensor-specific threshold
         threshold = sensor_thresholds.get(sensor_id, 0.002)
+
+        #print(threshold)
  
         # Step 1: get event mask using existing _get_filtered_mask
         mask = _get_filtered_mask(sensor_series, threshold, sample_period)
- 
+        
+        
         # Step 2: find contiguous True regions (each = one event window)
         diff   = np.diff(mask.astype(int))
         starts = np.where(diff == 1)[0] + 1       # False->True transitions
@@ -304,24 +298,9 @@ def find_sensor_peaks(
             seg = raw_signal[win_start:win_end]
             seg_len = len(seg)
  
-            # if seg_len < 2:
-            #     # Single sample — use it directly
-            #     p_idx = win_start
-            #     events.append((
-            #         time_series.iloc[p_idx],
-            #         time_series.iloc[p_idx],
-            #         float(raw_signal[p_idx]),
-            #         float(raw_signal[p_idx]),
-            #     ))
-            #     continue
- 
             # --- Collect all extrema (local max + local min) on raw signal ---
             extrema = []
  
-            # k=0: boundary peak — signal already turning at window start.
-            # Positive crossing that immediately drops: seg[0] > 0 and seg[0] > seg[1]
-            # Negative crossing that immediately rises: seg[0] < 0 and seg[0] < seg[1]
-            # If signal is still growing in magnitude, k=0 is NOT a peak.
             if (seg[0] > 0 and seg[0] > seg[1]) or \
                (seg[0] < 0 and seg[0] < seg[1]):
                 extrema.append(0)
@@ -368,7 +347,7 @@ def visualize_all_sensors(sampled_df, sensor_columns, time_column, start_time, d
     memory_usage()
  
     # Choose the sensors you want to plot with matplolib
-    sensor_list = sensor_columns[:8]  # or list(vertical_columns.values())[:6]
+    sensor_list = sensor_columns[:8]
     n = len(sensor_list)
     cols = 4
     rows = -(-n // cols)
@@ -387,18 +366,12 @@ def visualize_all_sensors(sampled_df, sensor_columns, time_column, start_time, d
         fig.delaxes(axes[j])
 
     fig.suptitle("Sensor Vibration Plots (Vertical Direction)", fontsize=14)
-    fig.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for suptitle
-    #plt.savefig('graphs/subplots.png')
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
-
-    # Save to file
-    #fig.savefig(f'src/results/Interactive_vibrations/vibration_data_{start_time} - {duration_mins} mins.png', dpi=300)
-        
+   
     fig = go.Figure()
-   # Choose the sensors you want to plot
-    sensor_list = sensor_columns[:6] # Adjust the number as needed
+    sensor_list = sensor_columns[:6]
 
-    # Create subplot structure: 2 rows, 3 columns for 6 sensors
     n = len(sensor_list)
     cols = 3
     rows = -(-n // cols)
@@ -406,9 +379,8 @@ def visualize_all_sensors(sampled_df, sensor_columns, time_column, start_time, d
     fig = make_subplots(
         rows=rows,
         cols=cols,
-        subplot_titles=sensor_list  # Use sensor names as titles
+        subplot_titles=sensor_list
     )
-    # Loop and add each sensor's trace to the appropriate subplot
     for i, sensor in enumerate(sensor_list):
         row = (i // cols) + 1
         col = (i % cols) + 1
@@ -426,14 +398,11 @@ def visualize_all_sensors(sampled_df, sensor_columns, time_column, start_time, d
             col=col
         )
 
-    # Update layout
     fig.update_layout(
         title_text="Sensor Vibration Plots (Vertical Direction)",
         showlegend=False
     )
-    # Display the plot
     fig.show()
-    #fig.write_html(f'src/results/Interactive_vibrations/vibration_data_{start_time} - {duration_mins} mins.html')
     print("All sensors visualization saved to all_sensors_acceleration.png")
     memory_usage()
     return sampled_df
@@ -441,11 +410,6 @@ def visualize_all_sensors(sampled_df, sensor_columns, time_column, start_time, d
 def multi_sensor_spectrogram(df, sensor_columns, cols=3):
     """
     Plot spectrograms for multiple sensors in subplots.
-
-    Parameters:
-    - df: DataFrame containing the sensor data.
-    - sensor_list: List of column names (sensors) to plot.
-    - cols: Number of columns for subplot layout.
     """
     sensor_list = sensor_columns[:6]
     n = len(sensor_list)
@@ -458,13 +422,12 @@ def multi_sensor_spectrogram(df, sensor_columns, cols=3):
         x = df[sensor_column].values
         f, t, Sxx = signal.spectrogram(
             x,
-            fs= 100, #sampling_rate,
+            fs= 100,
             window=signal.get_window('hamming', 256),
             nperseg=256,
             noverlap=64
         )
-        # Convert power to decibels (dB)
-        Sxx_dB = 10 * np.log10(Sxx + 1e-10)   # add epsilon to avoid log(0)
+        Sxx_dB = 10 * np.log10(Sxx + 1e-10)
         ax = axes[i]
         pcm = ax.pcolormesh(t, f, Sxx_dB, shading='gouraud', cmap='viridis')
         ax.set_title(sensor_column, fontsize=10)
@@ -473,7 +436,6 @@ def multi_sensor_spectrogram(df, sensor_columns, cols=3):
         ax.set_ylim([0, 50])
         fig.colorbar(pcm, ax=ax, label='Power [dB]')
 
-    # Remove unused axes if sensor count is not a perfect multiple of cols
     for j in range(i + 1, len(axes)):
         fig.delaxes(axes[j])
 
@@ -482,7 +444,6 @@ def multi_sensor_spectrogram(df, sensor_columns, cols=3):
     start_time = df["time"].iloc[0]
     end_time = df["time"].iloc[-1]
     plt.suptitle(f"Spectrogram of {sensor_column}\nStart: {start_time} | End: {end_time}")
-    #plt.savefig('graphs/multisensor_spectogram.png')
     plt.show()
 
 def visualize_sensor_histograms(df, sensor_columns, bins=50):
@@ -490,10 +451,8 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     print("Creating histograms for each sensor...")
     memory_usage()
     
-    # Determine grid size
     grid_size = int(np.ceil(np.sqrt(len(sensor_columns))))
     
-    # Create figure
     plt.figure(figsize=(16, 16))
 
     for i, sensor in enumerate(sensor_columns, 1):
@@ -504,7 +463,6 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
         plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    #plt.savefig('sensor_histograms.png', dpi=300)
     plt.show()
     plt.close()
     
@@ -519,51 +477,42 @@ def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2
     print("Generating 3D Waterfall plot...")
     memory_usage()
 
-    sensor_list = sensor_columns[:8]          # cap at 6 sensors for readability
+    sensor_list = sensor_columns[:8]
     n_sensors   = len(sensor_list)
 
     if n_sensors == 0:
         print("No sensor columns available for waterfall plot.")
         return
 
-    # ── Build time axis in seconds ────────────────────────────────────────────
-    # Use elapsed seconds from the first timestamp so the X-axis is readable
     t_raw = df[time_column].values
-    if hasattr(t_raw[0], 'timestamp'):          # datetime objects
+    if hasattr(t_raw[0], 'timestamp'):
         t_sec = np.array([(ts - t_raw[0]).total_seconds() for ts in t_raw])
-    else:                                        # numpy datetime64
+    else:
         t_sec = (t_raw - t_raw[0]).astype('timedelta64[ms]').astype(float) / 1000.0
 
-    # Downsample for speed
     step   = max(1, downsample_step)
     t_ds   = t_sec[::step]
 
-    # ── Collect signals ───────────────────────────────────────────────────────
     signals = []
     for col in sensor_list:
         sig = df[col].values[::step].astype(float)
         signals.append(sig)
 
-    # ── Colour map: one colour per sensor (tab10, front → back) ─────────────
     cmap   = plt.get_cmap("tab10")
     colors = [cmap(i / max(n_sensors - 1, 1)) for i in range(n_sensors)]
 
-    # ── Y-axis: integer positions for sensors, labelled with sensor names ─────
-    # We space sensors 1 unit apart on the Y-axis; labels replace the numbers
     y_positions = np.arange(n_sensors, dtype=float)
 
-    # ── Figure (white theme) ──────────────────────────────────────────────────
     fig = plt.figure(figsize=(14, 8))
     fig.patch.set_facecolor("white")
     ax  = fig.add_subplot(111, projection="3d")
     ax.set_facecolor("white")
 
-    for i in range(n_sensors - 1, -1, -1):     # draw back-to-front for overlap
+    for i in range(n_sensors - 1, -1, -1):
         y   = y_positions[i]
-        sig = sig
+        sig = signals[i]
         col = colors[i]
 
-        # Closed polygon path for the waterfall ribbon
         verts_x = np.concatenate([[t_ds[0]], t_ds, [t_ds[-1]]])
         verts_z = np.concatenate([[0],        sig,  [0]])
         verts_y = np.full_like(verts_x, y)
@@ -574,18 +523,15 @@ def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2
         poly.set_edgecolor((*col[:3], 0.0))
         ax.add_collection3d(poly)
 
-        # Solid line on top of the ribbon
         ax.plot(t_ds, [y] * len(t_ds), sig,
                 color=col, linewidth=0.9, alpha=0.95, zorder=i + n_sensors)
 
-    # ── Axes labels ───────────────────────────────────────────────────────────
     ax.set_xlabel("Elapsed Time  (s)",        color="black", fontsize=10, labelpad=10)
     ax.set_ylabel("Sensor",                   color="black", fontsize=10, labelpad=14)
     ax.set_zlabel("Acceleration  (m/s²)",     color="black", fontsize=10, labelpad=8)
     ax.set_title("Bridge Accelerometers – 3D Waterfall (Vehicle Pass)",
                  color="black", fontsize=13, fontweight="bold", pad=18)
 
-    # Replace numeric Y ticks with sensor names
     ax.set_yticks(y_positions)
     ax.set_yticklabels(sensor_list, fontsize=7, color="black")
 
@@ -602,7 +548,6 @@ def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2
     ax.zaxis.line.set_color("#cccccc")
     ax.grid(True, color="#dddddd", linewidth=0.4)
 
-    # Colour bar mapping sensor index → sensor name
     sm = plt.cm.ScalarMappable(
         cmap="tab10",
         norm=plt.Normalize(0, n_sensors - 1)
@@ -612,7 +557,7 @@ def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2
     cbar.set_label("Sensor index (front → back)", color="black", fontsize=8)
     cbar.set_ticks(np.arange(n_sensors))
     cbar.set_ticklabels(
-        [s[:8] for s in sensor_list],   # truncate long names for the colour bar
+        [s[:8] for s in sensor_list],
         fontsize=6
     )
     cbar.ax.yaxis.set_tick_params(colors="black", labelsize=6)
@@ -622,21 +567,17 @@ def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2
     plt.tight_layout()
 
     os.makedirs(os.path.dirname(save_path), exist_ok=True) if os.path.dirname(save_path) else None
-    #plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"3D Waterfall plot saved to: {save_path}")
     plt.show()
     memory_usage()
 
-def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, output_path =None) -> None:
+def visualize_overlay(df: pd.DataFrame, sensor_ids, time_column, peak_data, output_path=None) -> None:
 
     invalid = [s for s in sensor_ids if s not in df.columns]
     if invalid:
         raise ValueError(f"Sensors not found in data: {invalid}")
  
- 
     fig = go.Figure()
-
-    #print(peak_data)
  
     for sensor_id in sensor_ids:
         fig.add_trace(go.Scatter(
@@ -649,20 +590,16 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
             legendgroup=sensor_id
         ))
 
-         
-        # Peak markers (if available)
         if peak_data and sensor_id in peak_data:
             events = peak_data[sensor_id]
             if not events:
                 continue
  
-            fp_times = [e[0] for e in events]   # first_peak_time
-            dp_times = [e[1] for e in events]   # dominant_peak_time
-            fp_amps  = [e[2] for e in events]   # first_peak_amplitude
-            dp_amps  = [e[3] for e in events]   # dominant_peak_amplitude
+            fp_times = [e[0] for e in events]
+            dp_times = [e[1] for e in events]
+            fp_amps  = [e[2] for e in events]
+            dp_amps  = [e[3] for e in events]
  
-            #print(fp_times)
-            # First peaks — triangle markers
             fig.add_trace(go.Scatter(
                 x=fp_times,
                 y=fp_amps,
@@ -671,7 +608,6 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
                 marker=dict(
                     symbol='triangle-up',
                     size=10,
-                    #color=color,
                     line=dict(width=1, color='white'),
                 ),
                 legendgroup=sensor_id,
@@ -684,7 +620,6 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
                 ),
             ))
  
-            # Dominant peaks — star markers
             fig.add_trace(go.Scatter(
                 x=dp_times,
                 y=dp_amps,
@@ -693,7 +628,6 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
                 marker=dict(
                     symbol='star',
                     size=10,
-                   # color=color,
                     line=dict(width=1, color='white'),
                 ),
                 legendgroup=sensor_id,
@@ -723,105 +657,85 @@ def visualize_overlay(df: pd.DataFrame,sensor_ids, time_column, peak_data, outpu
             x=0.5,
         ),
         height=900,
-        #width=800
     )
  
     if output_path:
-       fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/first_peak/fig{sensor_id}.html')
-       pass
-    fig.write_html(f'/Users/thomas/Desktop/phd_unipv/Industrial_PhD/Graphs/first_peak/fig{sensor_id}.html')
+        fig.write_html(f'/home/thomas/graphs/fig{sensor_id}.html')
+    fig.write_html(f'/home/thomas/graphs/fig_{sensor_id}.html')
     fig.show()
 
 
 def main():
-    parser = argparse.ArgumentParser('Analyse the vibration realting the dyanmic weighing data')
-    parser.add_argument('--path', type = str, required=True, help= 'path for the file')
-    parser.add_argument('--start_time', type=str, required=True, help= 'starting time frame interedted in')
-    parser.add_argument('--duration_mins', type=float, required=True, help = 'duration in mins of time frame interested')
-    parser.add_argument('--sensor', type=str, default=None, help = 'Sensor ID(s) to analyze (comma-separated for multiple)')
+    parser = argparse.ArgumentParser('Analyse the vibration relating the dynamic weighing data')
+    parser.add_argument('--root_folder',   type=str, required=True, help='Root folder containing sensor CSV data')
+    parser.add_argument('--start_time',    type=str, required=True, help='Starting time frame of interest (YYYY/MM/DD HH:MM:SS)')
+    parser.add_argument('--duration_mins', type=float, required=True, help='Duration in minutes of time frame of interest')
+    parser.add_argument('--sensor',        type=str, default=None,  help='Sensor ID(s) to analyze (comma-separated for multiple)')
 
-    #ex for script RUNNING: python3 vibration_analysis.py --path  --start_time --duration_mins
     args = parser.parse_args()
-    path = args.path # Path to your parquet file
-    start_time = args.start_time 
+    root_folder   = args.root_folder
+    start_time    = args.start_time
     duration_mins = args.duration_mins
-    sensor_columns = args.sensor
+    sensor_arg    = args.sensor
 
-    threshold = 0.002
     sample_period = 500
 
-    # Load bridge model
+    # ── Derive CSV path from start_time and root_folder ──────────────────────
+    start_dt = pd.to_datetime(start_time)
+    date_str = start_dt.strftime("%Y%m%d")
+    hour     = start_dt.hour
+
+    print(f"Searching for CSV file: date={date_str}, hour={hour:02d}...")
+    path = find_csv_file(root_folder, date_str, hour)
+    print(f"Found: {path}")
+
+    # ── Load bridge model ─────────────────────────────────────────────────────
     print("Loading bridge model...")
     bridge = load_bridge(position_csv, threshold_csv, delimiter=delimiter)
     junctions = bridge.find_boundaries()
     
-    # Get all boundary sensor IDs (in physical order)
     boundary_sensors = [s for j in junctions for s in j.sensor_ids()]
-    boundary_nums = [s for j in junctions for s in j.sensor_numbers()]
-    
-    # Remove duplicates while preserving order
-    boundary_sensors = list(dict.fromkeys(boundary_sensors))
-    boundary_nums = list(dict.fromkeys(boundary_nums))
+    boundary_sensors = list(dict.fromkeys(boundary_sensors))  # deduplicate, preserve order
     
     print(f"Boundary sensors (after deduplication): {len(boundary_sensors)}")
     
-    # Extract sensor-specific trigger thresholds from bridge model
     print("\nExtracting sensor-specific trigger thresholds...")
     sensor_thresholds = extract_sensor_thresholds(bridge, boundary_sensors)
     
-    # Show threshold statistics
     threshold_values = list(sensor_thresholds.values())
     print(f"Loaded {len(sensor_thresholds)} sensor thresholds")
     print(f"Threshold range: {min(threshold_values):.6f} to {max(threshold_values):.6f}")
     print(f"Threshold mean: {np.mean(threshold_values):.6f}")
 
-
-    # Load data using Polars
+    # ── Load data ─────────────────────────────────────────────────────────────
     df, available_sensors, time_column = load_data_polars(path)
-    
-    
-    
-    if sensor_columns == None:
+
+    if sensor_arg is None:
         sensor_columns = boundary_sensors
     else:
-        sensor_columns = parse_sensor_ids(sensor_columns, available_sensors)
+        sensor_columns = parse_sensor_ids(sensor_arg, available_sensors)
 
-
-    
-    # Process the filtered data
-    no_dc_df = filter_dc_by_mean(df, sensor_columns)
-
+    # ── Process ───────────────────────────────────────────────────────────────
+    no_dc_df   = filter_dc_by_mean(df, sensor_columns)
     sampled_df = get_only_interested_duration(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
+    peak_data  = find_sensor_peaks(sampled_df, sensor_columns, time_column, sensor_thresholds, sample_period)
 
-    peak_data = find_sensor_peaks(sampled_df, sensor_columns, time_column, sensor_thresholds, sample_period)
+    visualize_overlay(sampled_df, sensor_columns, time_column, peak_data)
 
-    visualize_overlay(sampled_df,sensor_columns, time_column, peak_data)
-
-
-    # visualise each sensor in campate for a sample interval
-    #sampled_df = visualize_all_sensors(, sensor_columns, time_column, start_time, duration_mins)
-
-    #filtered_df, signal_fil_ratio = filterby_threshold(sampled_df, threshold, sample_period, sensor_columns)
-    
-    #multi_sensor_spectrogram(sampled_df, sensor_columns, cols=3)
-
-    #visualize_sensor_histograms(sampled_df, sensor_columns, bins=50)
-
-    # waterfall_3d_plot(
-    #         df=filtered_df,
-    #         sensor_columns=sensor_columns,
-    #         time_column=time_column,
-    #         fs=100,
-    #         downsample_step=2,
-    #         save_path='waterfall_3d_whole_bridge_overview.png'
-    #     )
-
-   
     print("Analysis complete!")
     memory_usage()
 
 if __name__ == "__main__":
     main()
-    #instructions to run this parametric scripts:
-    #check wether the parameters correctly matching the format(for ex: the date and month should be interchanegd from the format of weighing data)  
-    #  python3 vibration_analysis.py --path /Users/thomas/Data/Data_sensors/20250307/csv_acc/M001_2025-03-07_01-00-00_gg-112_int-2_th.csv --start_time '2025/03/07 01:05:00' --duration_mins 5 --sensor 03091203_x,0309101F_x
+    # Instructions to run this script:
+    # python3 vibration_analysis.py \
+    #   --root_folder /Users/thomas/Data/Data_sensors \
+    #   --start_time '2025/03/07 01:05:00' \
+    #   --duration_mins 5 \
+    #   --sensor 03091203_x
+    #
+    # For all boundary sensors (omit --sensor):
+    # python3 vibration_analysis.py \
+    #   --root_folder /Users/thomas/Data/Data_sensors \
+    #   --start_time '2025/03/03 00:00:00' \
+    #   --duration_mins 5
