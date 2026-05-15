@@ -129,7 +129,7 @@ def plot_vehicle(sub, sensor_order, amp_max, vehicle_id, output_path):
 
     # Y axis — time, reversed (0 at top)
     ax.set_ylabel("Seconds since first peak", fontsize=12, labelpad=8)
-    ax.invert_yaxis()
+    #ax.invert_yaxis()
     ax.yaxis.set_tick_params(labelsize=9)
 
     # Grid

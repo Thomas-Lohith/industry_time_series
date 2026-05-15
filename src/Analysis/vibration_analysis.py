@@ -728,11 +728,7 @@ def main():
 if __name__ == "__main__":
     main()
     # Instructions to run this script:
-    # python3 vibration_analysis.py \
-    #   --root_folder /Users/thomas/Data/Data_sensors \
-    #   --start_time '2025/03/07 01:05:00' \
-    #   --duration_mins 5 \
-    #   --sensor 03091203_x
+    # python3 vibration_analysis.py --root_folder /home/thomas/backup-sensor-data/ --start_time '2025/03/07 01:10:00' --duration_mins 5
     #
     # For all boundary sensors (omit --sensor):
     # python3 vibration_analysis.py \

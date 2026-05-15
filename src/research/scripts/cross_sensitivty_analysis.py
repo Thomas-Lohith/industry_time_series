@@ -119,7 +119,7 @@ def process_vehicle_event(vehicle_id, timestamp_str, root_folder, boundary_senso
         df_window[sensor] = df_window[sensor] - df_window[sensor].mean()
 
     peak_results = find_sensor_peaks(df_window, boundary_sensors, 'time', sensor_thresholds, sample_period)
-    print(peak_results)
+    #print(peak_results)
     row = {
         'vehicle_id':         vehicle_id,
         'original_timestamp': timestamp_str,
@@ -144,7 +144,7 @@ def main():
     p.add_argument('--output',        required=True,            help='Output CSV path')
     p.add_argument('--root_folder',   required=True,            help='Root folder with sensor data')
     p.add_argument('--sample_period', type=int, default=500,    help='Sample period for windowing')
-    p.add_argument('--time_offset',   type=int, default=2,    help='Timestamp offset in minutes')
+    p.add_argument('--time_offset',   type=int, default=1,    help='Timestamp offset in minutes')
     p.add_argument('--duration',      type=int, default=5,      help='Analysis window in minutes')
     args = p.parse_args()
 
@@ -170,6 +170,7 @@ def main():
     all_results = []
     for idx, row in vehicles_df.iterrows():
         vehicle_id = f"v{idx + 1}"
+
         try:
             result = process_vehicle_event(
                 vehicle_id, row['StartTimeStr'], args.root_folder,
@@ -189,4 +190,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # ex: python3 cross_sensitivity_analysis.py --input timestamps_collection.csv --output res.csv --root_folder /Users/thomas/Data/Data_sensors
+    # ex: python3 cross_sensitivty_analysis.py --input ../timestamps_collection.csv --output res.csv --root_folder /home/thomas/backup-sensor-data/
