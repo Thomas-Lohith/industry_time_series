@@ -1,15 +1,11 @@
 """
-bridge_tracker.py  —  ROLLING ANCHOR FORWARD PROJECTION
-========================================================
-At every confirmed sensor match, project expected arrival windows
-to ALL remaining sensors from that new anchor.
+bridge_tracker.py  —  PROBABILISTIC VEHICLE TRACKING
+=====================================================
+Scores sensor events against vehicle tracks using three methods:
 
-On a miss, anchor stays at last confirmed match — downstream
-windows are still valid and computed from the same stable reference.
-
-Matching rule  : event timestamp falls inside [t_min - margin, t_max + margin]
-Anchor update  : ONLY on confirmed match (miss never moves the anchor)
-After each match: ALL remaining sensor windows are recomputed and displayed
+    _build_sensor_data          — WIM Gaussian only (stateless baseline)
+    _build_sensor_data_propagated — Bayesian propagation with velocity refinement
+    _build_sensor_data_dual     — Score A (WIM) + Score B (hop-derived) + Score Bayes
 
 Input sources
 -------------
@@ -27,10 +23,6 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import numpy as np
-
 
 from src.shared import config
 from src.shared.bridge_model import *
@@ -39,17 +31,13 @@ from src.shared.bridge_model import *
 # Tunable parameters
 # ---------------------------------------------------------------------------
 
-VELOCITY_TOLERANCE_KMH = 10.0    # ±km/h applied to WIM speed → v_min / v_max
-TIMING_MARGIN_MS       = 30000   # ms added each side of every window
+VELOCITY_TOLERANCE_KMH = 40.0    # ±km/h applied to WIM speed → v_min / v_max
 TIMESTAMP_FORMAT       = "%Y-%m-%d %H:%M:%S"
 _SENSOR_COL_SUFFIX     = "_dominant_peaks"
 
-# Physical position of the WIM gate in bridge model coordinates (metres).
-# Derived from two real vehicle observations:
-#   v1 actual speed = (238.9 - 99.8) / (154.56 - 148.87) = 24.45 m/s (88.0 km/h)
-#   WIM gate pos    = 99.8 - 24.45 × 148.87             = -3,540m
-#   v2 cross-check  = (99.8 - (-3540)) / 153.58          = 23.70 m/s (85.3 km/h) ✓
-WIM_GATE_POSITION_M    = -3540.0
+WIM_GATE_POSITION_M    = -2300.0  # Physical position of WIM gate in bridge coords (m)
+                                   # Derived: v1 actual = (238.9-99.8)/(154.56-148.87)
+                                   #          = 24.45 m/s → gate = 99.8 - 24.45×148.87
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -64,33 +52,27 @@ class SensorEvent:
 
 @dataclass
 class MatchRecord:
-    """Result of one track–sensor interaction."""
     sensor_id  : str
     sensor_pos : float
-    t_min      : float          # window start (after margin applied)
-    t_max      : float          # window end   (after margin applied)
-    mu         : float          # window midpoint (no margin)
+    t_min      : float
+    t_max      : float
+    mu         : float
     matched    : bool
     event_ts   : Optional[float] = None
     event_amp  : Optional[float] = None
-    time_error : Optional[float] = None   # event_ts - mu (signed, seconds)
+    time_error : Optional[float] = None
 
 
 @dataclass
 class Vehicle:
-    """
-    anchor_pos / anchor_ts — position and timestamp of last CONFIRMED match.
-    Only updated on a match. A miss leaves the anchor unchanged so all
-    downstream windows continue to project from the last good fix.
-    """
-    vehicle_id   : int
+    vehicle_id : int
     entry_ts   : float
     v_min      : float
     v_max      : float
     mass_kg    : float
     v_est      : float
-    anchor_pos : float          # starts at WIM gate position
-    anchor_ts  : float          # starts at WIM entry timestamp
+    anchor_pos : float
+    anchor_ts  : float
     log        : list = field(default_factory=list)
     status     : str  = "ACTIVE"
 
@@ -102,7 +84,6 @@ _reference_epoch: Optional[datetime] = None
 
 
 def _dt_to_seconds(dt: datetime) -> float:
-    """Convert datetime to seconds from reference epoch. Sets epoch on first call."""
     global _reference_epoch
     if _reference_epoch is None:
         _reference_epoch = dt
@@ -110,11 +91,6 @@ def _dt_to_seconds(dt: datetime) -> float:
 
 
 def _to_ts(seconds: float) -> str:
-    """
-    Convert internal seconds value back to a human-readable timestamp string.
-    Format: HH:MM:SS.mmm  (millisecond precision)
-    Falls back to raw seconds if epoch not yet set.
-    """
     if _reference_epoch is None:
         return f"{seconds:.3f}s"
     dt = _reference_epoch + timedelta(seconds=seconds)
@@ -122,26 +98,19 @@ def _to_ts(seconds: float) -> str:
 
 
 def _parse_str_to_dt(ts_str: str) -> datetime:
-    """
-    Handles two date formats observed in real data:
-      YYYY-MM-DD  standard   e.g. 2025-03-18 00:33:00
-      YYYY-DD-MM  swapped    e.g. 2025-18-03 00:15:00
-    Both represent the same date. Standard tried first, swapped as fallback.
-    """
     for fmt in (
         TIMESTAMP_FORMAT + ".%f",
         TIMESTAMP_FORMAT,
         "%Y-%d-%m %H:%M:%S.%f",
         "%Y-%d-%m %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S"
+
     ):
         try:
             return datetime.strptime(ts_str.strip(), fmt)
         except ValueError:
             continue
-    raise ValueError(
-        f"Cannot parse timestamp: '{ts_str}' "
-        f"— expected YYYY-MM-DD or YYYY-DD-MM"
-    )
+    raise ValueError(f"Cannot parse timestamp: '{ts_str}'")
 
 
 def _parse_timestamp(ts_str: str) -> float:
@@ -151,13 +120,13 @@ def _parse_timestamp(ts_str: str) -> float:
 # Data loaders
 # ---------------------------------------------------------------------------
 
-def load_sensor_positions() -> dict[str, float]:
+def load_sensor_positions(limit) -> dict[str, float]:
     """Boundary sensors only — tail + entry at every span junction."""
     bridge    = load_bridge(config.position_csv, config.threshold_csv)
     junctions = bridge.find_boundaries()
 
     positions = {}
-    for junction in junctions[:2]:
+    for junction in junctions[:limit]:
         for sensor in junction.all_sensors():
             positions[sensor.sensor_id] = sensor.distance
 
@@ -169,8 +138,7 @@ def load_sensor_positions() -> dict[str, float]:
 def load_wim_entries() -> list[Vehicle]:
     """
     MUST be called before load_sensor_events() — sets reference epoch.
-    vehicle_id : sequential 0, 1, 2, ... (CSV index ignored)
-    anchor   : starts at WIM gate (WIM_GATE_POSITION_M, entry_ts)
+    vehicle_id: sequential 0, 1, 2, ... (CSV index ignored)
     """
     vehicles = []
     with open(config.WIM_CSV, newline="", encoding="utf-8-sig") as f:
@@ -180,7 +148,7 @@ def load_wim_entries() -> list[Vehicle]:
             speed_kmh = float(row["Velocity"])
             entry_ts  = _parse_timestamp(row["StartTimeStr"])
             vehicles.append(Vehicle(
-                vehicle_id   = idx,
+                vehicle_id = idx,
                 entry_ts   = entry_ts,
                 v_min      = (speed_kmh - VELOCITY_TOLERANCE_KMH) / 3.6,
                 v_max      = (speed_kmh + VELOCITY_TOLERANCE_KMH) / 3.6,
@@ -189,7 +157,7 @@ def load_wim_entries() -> list[Vehicle]:
                 anchor_pos = WIM_GATE_POSITION_M,
                 anchor_ts  = entry_ts,
             ))
-            print(f"  [WIM] Track {idx}: "
+            print(f"  [WIM] V{idx}: "
                   f"entry={_to_ts(entry_ts)}  "
                   f"speed={speed_kmh:.0f} km/h  "
                   f"v_min={vehicles[-1].v_min:.2f} m/s  "
@@ -205,9 +173,9 @@ def load_sensor_events() -> dict[str, list[SensorEvent]]:
     Wide-format CSV, one row per vehicle, one column per sensor.
     Date correction: sensor event dates replaced with date from original_timestamp.
     """
-    events:  dict[str, list[SensorEvent]] = {}
-    seen:    dict[str, set[float]] = {}   # {sensor_id: set of timestamps already loaded}
-    skipped = 0
+    events     : dict[str, list[SensorEvent]] = {}
+    seen       : dict[str, set[float]]        = {}
+    skipped    = 0
     duplicates = 0
 
     with open(config.SENSOR_EVENTS_CSV, newline="", encoding="utf-8-sig") as f:
@@ -243,9 +211,6 @@ def load_sensor_events() -> dict[str, list[SensorEvent]]:
                     )
                     ts = _dt_to_seconds(corrected_dt)
 
-                    # Skip if this timestamp already loaded for this sensor
-                    # — same physical event appears in multiple vehicle rows
-                    # when collection windows overlap
                     if ts in seen.get(sensor_id, set()):
                         duplicates += 1
                         continue
@@ -261,286 +226,12 @@ def load_sensor_events() -> dict[str, list[SensorEvent]]:
     if skipped:
         print(f"[LOAD] WARNING: {skipped} entries skipped (unparseable)")
     if duplicates:
-        print(f"[LOAD] {duplicates} duplicate events removed (overlapping vehicle windows)")
+        print(f"[LOAD] {duplicates} duplicate events removed")
     print(f"[LOAD] {total} unique events across {len(events)} sensors")
     return events
 
 # ---------------------------------------------------------------------------
-# Core — window calculation and matching
-# ---------------------------------------------------------------------------
-
-def _compute_window(vehicle: Vehicle,
-                    sensor_pos: float) -> tuple[float, float, float]:
-    """
-    Compute expected arrival window at sensor_pos from current anchor.
-    Returns (t_min_with_margin, t_max_with_margin, mu)
-    mu = physics midpoint without margin — used for best candidate selection.
-    """
-    d      = sensor_pos - vehicle.anchor_pos
-    t_min  = vehicle.anchor_ts + d / vehicle.v_max
-    t_max  = vehicle.anchor_ts + d / vehicle.v_min
-    mu     = (t_min + t_max) / 2
-    margin = TIMING_MARGIN_MS / 1000.0
-    return t_min - margin, t_max + margin, mu
-
-
-def _attempt_match(vehicle:    Vehicle,
-                   sensor_id:  str,
-                   sensor_pos: float,
-                   events:     list[SensorEvent]) -> MatchRecord:
-    """
-    Try to match track to events at this sensor using time window.
-    Candidates : events inside [t_min, t_max] (margin included)
-    Winner     : candidate closest to mu (physics midpoint)
-    Anchor     : advances to winner on match, UNCHANGED on miss
-    """
-    t_min, t_max, mu = _compute_window(vehicle, sensor_pos)
-    candidates = [e for e in events if t_min <= e.timestamp <= t_max]
-
-    if not candidates:
-        return MatchRecord(
-            sensor_id  = sensor_id,
-            sensor_pos = sensor_pos,
-            t_min      = t_min,
-            t_max      = t_max,
-            mu         = mu,
-            matched    = False,
-        )
-
-    # Pick event closest to physics midpoint
-    best = min(candidates, key=lambda e: abs(e.timestamp - mu))
-
-    # Refine velocity using travel time from anchor
-    d       = sensor_pos - vehicle.anchor_pos
-    delta_t = best.timestamp - vehicle.anchor_ts
-    if delta_t > 0:
-        v_measured  = d / delta_t
-        v_measured  = max(vehicle.v_min, min(vehicle.v_max, v_measured))
-        vehicle.v_est = 0.5 * v_measured + 0.5 * vehicle.v_est
-        vehicle.v_est = max(vehicle.v_min, min(vehicle.v_max, vehicle.v_est))
-
-    # Advance anchor — next projections start from here
-    vehicle.anchor_pos = sensor_pos
-    vehicle.anchor_ts  = best.timestamp
-
-    return MatchRecord(
-        sensor_id  = sensor_id,
-        sensor_pos = sensor_pos,
-        t_min      = t_min,
-        t_max      = t_max,
-        mu         = mu,
-        matched    = True,
-        event_ts   = best.timestamp,
-        event_amp  = best.peak_amplitude,
-        time_error = best.timestamp - mu,
-    )
-
-# ---------------------------------------------------------------------------
-# Main pipeline
-# ---------------------------------------------------------------------------
-
-def run_tracker(sensor_positions: dict[str, float],
-                sensor_events:    dict[str, list[SensorEvent]],
-                vehicles:         list[Vehicle]) -> list[Vehicle]:
-    """
-    Outer loop: one vehicle at a time.
-    Inner loop: sensors in position order.
-    After every match, project remaining sensor windows from new anchor.
-    """
-    ordered = sorted(sensor_positions.items(), key=lambda x: x[1])
-
-    print("\n" + "=" * 70)
-    print("BRIDGE TRACKER  —  rolling anchor forward projection")
-    print(f"  Boundary sensors  : {len(ordered)}")
-    print(f"  WIM tracks        : {len(vehicles)}")
-    print(f"  Sensor range      : {ordered[0][1]:.1f}m — {ordered[-1][1]:.1f}m")
-    print(f"  WIM gate pos      : {WIM_GATE_POSITION_M:.1f}m")
-    print(f"  Timing margin     : ±{TIMING_MARGIN_MS}ms")
-    print("=" * 70)
-
-    for vehicle in vehicles[:]:
-        print(f"\n{'─' * 70}")
-        print(f"TRACK {vehicle.vehicle_id}  |  "
-              f"speed={vehicle.v_est * 3.6:.1f} km/h  |  "
-              f"v_min={vehicle.v_min:.2f} m/s  v_max={vehicle.v_max:.2f} m/s  |  "
-              f"mass={vehicle.mass_kg:.0f} kg")
-        print(f"  Anchor start: pos={vehicle.anchor_pos:.1f}m  "
-              f"ts={_to_ts(vehicle.anchor_ts)}")
-        print(f"{'─' * 70}")
-
-        for i, (sensor_id, sensor_pos) in enumerate(ordered):
-            events = sensor_events.get(sensor_id, [])
-            rec    = _attempt_match(vehicle, sensor_id, sensor_pos, events)
-            vehicle.log.append(rec)
-
-            if rec.matched:
-                print(f"\n  ✅ Sensor {sensor_id}  pos={sensor_pos:.1f}m")
-                print(f"     window : [{_to_ts(rec.t_min)}, {_to_ts(rec.t_max)}]  "
-                      f"width={(rec.t_max - rec.t_min)*1000:.0f}ms")
-                print(f"     event  : {_to_ts(rec.event_ts)}  "
-                      f"error={rec.time_error * 1000:+.0f}ms  "
-                      f"amp={rec.event_amp:+.5f}")
-                print(f"     v_est refined → {vehicle.v_est * 3.6:.2f} km/h")
-                print(f"     new anchor: pos={vehicle.anchor_pos:.1f}m  "
-                      f"ts={_to_ts(vehicle.anchor_ts)}")
-
-                # Project ALL remaining sensors from this new anchor
-                remaining = ordered[i + 1:]
-                if remaining:
-                    print(f"\n     ┌─ Projections from new anchor ({'─' * 30})")
-                    for rem_id, rem_pos in remaining[-2:]:
-                        rt_min, rt_max, rmu = _compute_window(vehicle, rem_pos)
-                        width_ms = (rt_max - rt_min) * 1000
-                        print(f"     │  {rem_id:<22}  "
-                              f"pos={rem_pos:7.1f}m  "
-                              f"window=[{_to_ts(rt_min)}, {_to_ts(rt_max)}]  "
-                              f"width={width_ms:.0f}ms")
-                    print(f"     └{'─' * 51}")
-
-            else:
-                print(f"  ❌ Sensor {sensor_id}  pos={sensor_pos:.1f}m  "
-                      f"window=[{_to_ts(rec.t_min)}, {_to_ts(rec.t_max)}]  "
-                      f"width={(rec.t_max - rec.t_min)*1000:.0f}ms  "
-                      f"events_at_sensor={len(events)}  no match")
-
-        vehicle.status = "COMPLETED"
-
-    return vehicles
-
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
-
-def summarise(vehicles: list[Vehicle]) -> None:
-    print("\n" + "=" * 70)
-    print("TRACK SUMMARY")
-    print("=" * 70)
-
-    for vehicle in vehicles:
-        matches  = sum(1 for r in vehicle.log if r.matched)
-        misses   = sum(1 for r in vehicle.log if not r.matched)
-        errors   = [r.time_error * 1000 for r in vehicle.log if r.matched]
-        mean_err = sum(errors) / len(errors) if errors else 0.0
-        max_err  = max(abs(e) for e in errors) if errors else 0.0
-
-        print(f"\nTrack {vehicle.vehicle_id:>3}  "
-              f"v_final={vehicle.v_est * 3.6:.1f} km/h  "
-              f"mass={vehicle.mass_kg:.0f} kg  "
-              f"matched={matches}/{len(vehicle.log)}  "
-              f"missed={misses}  "
-              f"mean_err={mean_err:+.0f}ms  "
-              f"max_err={max_err:.0f}ms")
-
-        for rec in vehicle.log:
-            if rec.matched:
-                print(f"  ✅ {rec.sensor_id:<22}  "
-                      f"pos={rec.sensor_pos:7.1f}m  "
-                      f"event={_to_ts(rec.event_ts)}  "
-                      f"error={rec.time_error * 1000:+.0f}ms")
-            else:
-                print(f"  ❌ {rec.sensor_id:<22}  "
-                      f"pos={rec.sensor_pos:7.1f}m  "
-                      f"window=[{_to_ts(rec.t_min)}, {_to_ts(rec.t_max)}]")
-
-# ---------------------------------------------------------------------------
-# Event timeline with per-track Gaussian probability scores
-# ---------------------------------------------------------------------------
-
-def event_timeline_with_probabilities(
-    sensor_positions : dict[str, float],
-    sensor_events    : dict[str, list[SensorEvent]],
-    vehicles         : list[Vehicle],
-) -> None:
-    """
-    For each sensor (in position order), print a timeline of ALL dominant
-    peaks recorded at that sensor, and below each event print a Gaussian
-    probability score for every vehicle track.
-
-    Probability formula (no normalisation):
-        mu    = physics window midpoint  = (t_min + t_max) / 2
-        sigma = half physics window width = (t_max - t_min) / 2
-        score = exp(-0.5 × ((event.ts - mu) / sigma)²)
-
-        score = 1.0  when event.ts == mu  (dead centre of window)
-        score → 0.0  as event.ts moves toward or past window edges
-
-    Margin is NOT included in mu/sigma — scoring uses pure physics only.
-    Margin is only used in _attempt_match for binary match/miss decisions.
-
-    Structure designed to extend to all sensors once first-sensor tests pass:
-    change  `ordered[:1]`  to  `ordered`  in the sensor loop below.
-    """
-
-    ordered = sorted(sensor_positions.items(), key=lambda x: x[1])
-
-    print("\n" + "=" * 70)
-    print("EVENT TIMELINE WITH PROBABILITY SCORES")
-    print(f"  Sensors shown     : first sensor only (extend ordered[:1] → ordered)")
-    print(f"  Tracks            : {len(vehicles)}")
-    print(f"  Scoring           : Gaussian(event.ts, mu, sigma)  — no normalisation")
-    print("=" * 70)
-
-    # ── change ordered[:1] → ordered to cover all sensors ──────────────────
-    for sensor_id, sensor_pos in ordered[:1]:
-
-        events = sensor_events.get(sensor_id, [])
-
-        print(f"\nSensor {sensor_id}  pos={sensor_pos:.1f}m  "
-              f"total events={len(events)}")
-        print("─" * 70)
-
-        if not events:
-            print("  (no events recorded at this sensor)")
-            continue
-
-        # Sort all events at this sensor by timestamp for clean timeline view
-        timeline = sorted(events, key=lambda e: e.timestamp)
-
-        for event in timeline:
-
-            print(f"\n  Event  {_to_ts(event.timestamp)}  "
-                  f"amp={event.peak_amplitude:+.5f}")
-
-            # Score this event against every vehicle independently.
-            # Each vehicle's window is computed fresh from its WIM gate
-            # anchor (entry_ts, WIM_GATE_POSITION_M) — no dependency on
-            # post-matching anchor state from run_tracker.
-            for vehicle in vehicles:
-
-                # Distance from WIM gate to this sensor — same geometry
-                # for all vehicles, differs only in speed and entry time
-                d = sensor_pos - WIM_GATE_POSITION_M
-
-                # Expected arrival window from WIM gate
-                # t_min: fastest possible (v_max), t_max: slowest (v_min)
-                t_min = vehicle.entry_ts + d / vehicle.v_max
-                t_max = vehicle.entry_ts + d / vehicle.v_min
-
-                # Ensure correct order (safety guard)
-                t_min, t_max = min(t_min, t_max), max(t_min, t_max)
-
-                mu    = (t_min + t_max) / 2
-                sigma = (t_max - t_min) / 2
-                if sigma <= 0:
-                    sigma = 1e-3
-
-                # Gaussian score — 1.0 at mu, decays toward edges
-                score = math.exp(
-                    -0.5 * ((event.timestamp - mu) / sigma) ** 2
-                )
-
-                print(f"    Vehicle {vehicle.vehicle_id}  "
-                      f"entry={_to_ts(vehicle.entry_ts)}  "
-                      f"mu={_to_ts(mu)}  "
-                      f"window=[{_to_ts(t_min)}, {_to_ts(t_max)}]  "
-                      f"sigma={sigma:.3f}s  "
-                      f"score={score:.6f}")
-
-        print()
-
-
-# ---------------------------------------------------------------------------
-# Shared helper — build sensor_data dict used by all visualisations
+# Scoring — baseline: always from WIM gate
 # ---------------------------------------------------------------------------
 
 def _build_sensor_data(
@@ -549,12 +240,12 @@ def _build_sensor_data(
     vehicles         : list[Vehicle],
 ) -> dict:
     """
-    Pre-compute Gaussian scores for every (sensor, event, vehicle) triple.
+    Stateless baseline. All windows projected from WIM gate using WIM velocity.
     Returns sensor_data dict keyed by sensor_id:
-        pos      : float               sensor position (m)
-        timeline : [SensorEvent]       events sorted by timestamp
-        scores   : [[float]]           scores[event_idx][vehicle_idx]
-        mus      : [(vid, t_min, t_max, mu, sigma)]  per vehicle
+        pos      : float
+        timeline : [SensorEvent]
+        scores   : [[float]]      scores[event_idx][vehicle_idx]
+        mus      : [(vid, t_min, t_max, mu, sigma)]
     """
     ordered     = sorted(sensor_positions.items(), key=lambda x: x[1])
     sensor_data = {}
@@ -596,327 +287,828 @@ def _build_sensor_data(
 
 
 # ---------------------------------------------------------------------------
-# Suggestion 1 — Probability Heatmap Matrix
+# Scoring — propagated: Bayesian anchor propagation with velocity refinement
 # ---------------------------------------------------------------------------
 
-def viz_heatmap(sensor_data: dict, vehicles: list[Vehicle]) -> None:
+def _build_sensor_data_propagated(
+    sensor_positions : dict[str, float],
+    sensor_events    : dict[str, list[SensorEvent]],
+    vehicles         : list[Vehicle],
+) -> dict:
     """
-    One heatmap per sensor.
-    Rows = vehicles, columns = events sorted by timestamp.
-    Cell colour = Gaussian probability score (white=0, dark red=1).
-    Hot column = event clearly owned by one vehicle.
-    Two hot cells in one column = ambiguous event.
+    Bayesian propagation version. Drop-in replacement for _build_sensor_data.
+    Anchor advances after each matched sensor. Velocity refined per match.
+    Velocity refinement currently DISABLED for diagnostic purposes.
     """
-    
+    V_SIGMA_FLOOR       = 5
+    MIN_SCORE_TO_UPDATE = 0.0005
+    MIN_SIGMA_PROP = 2.0  
+
+    ordered     = sorted(sensor_positions.items(), key=lambda x: x[1])
+    sensor_data = {}
+
+    states = {}
+    for vehicle in vehicles:
+        v_half = (vehicle.v_max - vehicle.v_min) / 2
+        states[vehicle.vehicle_id] = {
+            "anchor_pos" : WIM_GATE_POSITION_M,
+            "anchor_ts"  : vehicle.entry_ts,
+            "v_est"      : vehicle.v_est,
+            "v_sigma"    : v_half,
+            "prior"      : 1.0,
+        }
+
+    for sensor_id, sensor_pos in ordered:
+        events = sensor_events.get(sensor_id, [])
+        if not events:
+            sensor_data[sensor_id] = {
+                "pos": sensor_pos, "timeline": [],
+                "scores": [], "mus": [],
+            }
+            continue
+
+        timeline = sorted(events, key=lambda e: e.timestamp)
+        mus      = []
+
+        for vehicle in vehicles:
+            st    = states[vehicle.vehicle_id]
+            d     = sensor_pos - st["anchor_pos"]
+
+            v_min_eff = max(vehicle.v_min, st["v_est"] - st["v_sigma"])
+            v_max_eff = min(vehicle.v_max, st["v_est"] + st["v_sigma"])
+            if v_min_eff >= v_max_eff:
+                v_min_eff = vehicle.v_min
+                v_max_eff = vehicle.v_max
+
+            t_min = st["anchor_ts"] + d / v_max_eff
+            t_max = st["anchor_ts"] + d / v_min_eff
+            t_min, t_max = min(t_min, t_max), max(t_min, t_max)
+            mu    = (t_min + t_max) / 2
+            sigma = max((t_max - t_min) / 2, MIN_SIGMA_PROP)
+            mus.append((vehicle.vehicle_id, t_min, t_max, mu, sigma))
+
+        scores = []
+        for event in timeline:
+            row = []
+            for vi, vehicle in enumerate(vehicles):
+                _, t_min, t_max, mu, sigma = mus[vi]
+                raw = math.exp(-0.5 * ((event.timestamp - mu) / sigma) ** 2)
+                row.append(raw)
+            scores.append(row)
+
+        cumulative_confidence = {}
+        for vi, vehicle in enumerate(vehicles):
+            st       = states[vehicle.vehicle_id]
+            _, t_min, t_max, mu, sigma = mus[vi]
+            best_raw = max(
+                math.exp(-0.5 * ((e.timestamp - mu) / sigma) ** 2)
+                for e in timeline
+            ) if timeline else 0.0
+            cumulative_confidence[vehicle.vehicle_id] = st["prior"] * best_raw
+
+        sensor_data[sensor_id] = {
+            "pos"                   : sensor_pos,
+            "timeline"              : timeline,
+            "scores"                : scores,
+            "mus"                   : mus,
+            "cumulative_confidence" : cumulative_confidence,
+        }
+
+        for vi, vehicle in enumerate(vehicles):
+            st  = states[vehicle.vehicle_id]
+            _, t_min, t_max, mu, sigma = mus[vi]
+            if not timeline:
+                continue
+
+            raw_scores = [
+                math.exp(-0.5 * ((e.timestamp - mu) / sigma) ** 2)
+                for e in timeline
+            ]
+            best_ei    = max(range(len(raw_scores)), key=lambda i: raw_scores[i])
+            best_score = raw_scores[best_ei]
+            best_event = timeline[best_ei]
+
+            if best_score < MIN_SCORE_TO_UPDATE:
+                continue
+
+            # Velocity refinement — DISABLED for diagnostic
+            # # Uncomment to re-enable:
+            # d       = sensor_pos - st["anchor_pos"]
+            # delta_t = best_event.timestamp - st["anchor_ts"]
+            # if delta_t > 0:
+            #     v_measured  = d / delta_t
+            #     v_measured  = max(vehicle.v_min, min(vehicle.v_max, v_measured))
+            #     v_refined   = best_score * v_measured + (1-best_score) * st["v_est"]
+            #     v_refined   = max(vehicle.v_min, min(vehicle.v_max, v_refined))
+            #     v_sigma_new = st["v_sigma"] * (1 - best_score)
+            #     v_sigma_new = max(V_SIGMA_FLOOR, v_sigma_new)
+            #     st["v_est"]   = v_refined
+            #     st["v_sigma"] = v_sigma_new
+
+            st["anchor_pos"] = sensor_pos
+            st["anchor_ts"]  = best_event.timestamp
+            prior_before     = st["prior"]
+            posterior        = prior_before * best_score
+            st["prior"]      = best_score
+
+            print(f"  [PROP] V{vehicle.vehicle_id}  "
+                  f"sensor={sensor_id}  "
+                  f"event={_to_ts(best_event.timestamp)}  "
+                  f"prior={prior_before:.4f}  "
+                  f"likelihood={best_score:.4f}  "
+                  f"posterior={posterior:.4f}  "
+                  f"v_est={st['v_est']*3.6:.1f}km/h  "
+                  f"v_sigma={st['v_sigma']:.3f}m/s")
+
+    return sensor_data
+
+
+# ---------------------------------------------------------------------------
+# Scoring — dual: Score A (WIM) + Score B (hop-derived) + Score Bayes
+# ---------------------------------------------------------------------------
+
+def _build_sensor_data_dual(
+    sensor_positions : dict[str, float],
+    sensor_events    : dict[str, list[SensorEvent]],
+    vehicles         : list[Vehicle],
+) -> dict:
+    """
+    Computes three scores per (sensor, event, vehicle):
+
+    Score A  —  WIM Gaussian  (scores_wim)
+        Projected from WIM gate using WIM-recorded velocity ± 10 km/h.
+        Stateless — always available.
+
+    Score B  —  Propagated Gaussian  (scores_prop)
+        Projected from last anchor using hop-derived velocity ± 10 km/h.
+        None at sensor 1. Initialised from best Score A match at sensor 1.
+        SCORE_B_MARGIN_S added each side to widen window.
+
+    Score Bayes  —  Bayesian posterior  (scores_bayes)
+        posterior = prior × Score B
+        Falls back to Score A at sensor 1.
+        Prior carried forward unchanged on skip (below threshold).
+
+    Fixes:
+        Fix 1 — prev_anchor only advances when sensor position changes
+        Fix 2 — anchor only advances if event timestamp is strictly later
+
+    Output per sensor_id:
+        pos          : float
+        timeline     : [SensorEvent]
+        scores_wim   : [[float]]
+        scores_prop  : [[float | None]]
+        scores_bayes : [[float]]
+        mus_wim      : [(vid, t_min, t_max, mu, sigma)]
+        mus_prop     : [(vid, t_min, t_max, mu, sigma) | None]
+    """
+
+    MIN_SCORE_TO_UPDATE = 0.0005
+    VELOCITY_TOL_MS     = VELOCITY_TOLERANCE_KMH / 3.6
+    MIN_SIGMA_PROP      = 2.5    # minimum Score B sigma (co-located sensors)
+    SCORE_B_MARGIN_S    = 2.5    # seconds added each side of Score B window
+
+    ordered     = sorted(sensor_positions.items(), key=lambda x: x[1])
+    sensor_data = {}
+
+    states = {}
+    for vehicle in vehicles:
+        states[vehicle.vehicle_id] = {
+            "prev_anchor" : {"pos": WIM_GATE_POSITION_M, "ts": vehicle.entry_ts},
+            "last_anchor" : None,
+            "prior"       : 1.0,
+        }
+
+    for si, (sensor_id, sensor_pos) in enumerate(ordered):
+
+        events = sensor_events.get(sensor_id, [])
+        if not events:
+            sensor_data[sensor_id] = {
+                "pos"          : sensor_pos,
+                "timeline"     : [],
+                "scores_wim"   : [],
+                "scores_prop"  : [],
+                "scores_bayes" : [],
+                "mus_wim"      : [],
+                "mus_prop"     : [],
+            }
+            continue
+
+        timeline   = sorted(events, key=lambda e: e.timestamp)
+        d_from_wim = sensor_pos - WIM_GATE_POSITION_M
+
+        mus_wim  = []
+        mus_prop = []
+
+        for vehicle in vehicles:
+            st = states[vehicle.vehicle_id]
+
+            # Score A window — WIM gate, WIM velocity
+            t_min_w = vehicle.entry_ts + d_from_wim / vehicle.v_max
+            t_max_w = vehicle.entry_ts + d_from_wim / vehicle.v_min
+            t_min_w, t_max_w = min(t_min_w, t_max_w), max(t_min_w, t_max_w)
+            mu_w    = (t_min_w + t_max_w) / 2
+            sigma_w = (t_max_w - t_min_w) / 2 or 1e-3
+            mus_wim.append((vehicle.vehicle_id, t_min_w, t_max_w, mu_w, sigma_w))
+
+            # Score B window — last anchor, hop-derived velocity
+            if st["last_anchor"] is None:
+                if si > 0:
+                    print(f"  [DEBUG-NONE] V{vehicle.vehicle_id}  "
+                          f"sensor={sensor_id}  → last_anchor is None")
+                mus_prop.append(None)
+                continue
+
+            prev   = st["prev_anchor"]
+            last   = st["last_anchor"]
+            d_hop  = last["pos"] - prev["pos"]
+            dt_hop = last["ts"]  - prev["ts"]
+
+            if dt_hop <= 0:
+                print(f"  [DEBUG-NONE] V{vehicle.vehicle_id}  "
+                      f"sensor={sensor_id}  "
+                      f"→ dt_hop={dt_hop:.4f}s <= 0  (clock sync issue)")
+                mus_prop.append(None)
+                continue
+
+            if d_hop <= 0:
+                print(f"  [DEBUG-NONE] V{vehicle.vehicle_id}  "
+                      f"sensor={sensor_id}  "
+                      f"→ d_hop={d_hop:.2f}m <= 0")
+                mus_prop.append(None)
+                continue
+
+            v_derived = d_hop / dt_hop
+            v_min_p   = max(v_derived - VELOCITY_TOL_MS, 1e-3)
+            v_max_p   = v_derived + VELOCITY_TOL_MS
+
+            d_prop  = sensor_pos - last["pos"]
+            t_min_p = last["ts"] + d_prop / v_max_p
+            t_max_p = last["ts"] + d_prop / v_min_p
+            t_min_p, t_max_p = min(t_min_p, t_max_p), max(t_min_p, t_max_p)
+
+            # Add margin — widens window without shifting mu
+            t_min_p -= SCORE_B_MARGIN_S
+            t_max_p += SCORE_B_MARGIN_S
+
+            mu_p    = (t_min_p + t_max_p) / 2
+            sigma_p = max((t_max_p - t_min_p) / 2, MIN_SIGMA_PROP)
+            mus_prop.append((vehicle.vehicle_id, t_min_p, t_max_p, mu_p, sigma_p))
+
+            # Window comparison diagnostic
+            if si >= 1:
+                mu_shift = mu_p - mu_w
+                overlap  = max(0.0,
+                    min(mu_w + sigma_w, mu_p + sigma_p) -
+                    max(mu_w - sigma_w, mu_p - sigma_p)
+                )
+                print(f"  [DEBUG-WIN]  V{vehicle.vehicle_id}  "
+                      f"sensor={sensor_id}  si={si}  "
+                      f"d_hop={d_hop:.1f}m  dt_hop={dt_hop:.3f}s  "
+                      f"v_derived={v_derived*3.6:.1f}km/h  d_prop={d_prop:.1f}m  "
+                      f"| mu_A={_to_ts(mu_w)}  mu_B={_to_ts(mu_p)}  "
+                      f"mu_shift={mu_shift:+.3f}s  "
+                      f"| sigma_A={sigma_w:.3f}s  sigma_B={sigma_p:.3f}s  "
+                      f"| overlap={overlap:.3f}s")
+
+        # Events vs Score B windows diagnostic
+        if si >= 1:
+            print(f"  [DEBUG-EVENTS] sensor={sensor_id}  {len(timeline)} events:")
+            for event in timeline:
+                print(f"    event={_to_ts(event.timestamp)}  "
+                      f"amp={event.peak_amplitude:+.5f}")
+                for vi, vehicle in enumerate(vehicles):
+                    if mus_prop[vi] is None:
+                        print(f"      V{vehicle.vehicle_id}  Score B window=None")
+                    else:
+                        _, t_min_p, t_max_p, mu_p, sigma_p = mus_prop[vi]
+                        inside = t_min_p <= event.timestamp <= t_max_p
+                        dist   = event.timestamp - mu_p
+                        sc_b   = math.exp(
+                            -0.5 * ((event.timestamp - mu_p) / sigma_p) ** 2
+                        )
+                        print(f"      V{vehicle.vehicle_id}  "
+                              f"window=[{_to_ts(t_min_p)}, {_to_ts(t_max_p)}]  "
+                              f"inside={inside}  "
+                              f"dist_from_mu={dist:+.3f}s  "
+                              f"score_B={sc_b:.4f}")
+
+        # Scores per event
+        scores_wim   = []
+        scores_prop  = []
+        scores_bayes = []
+
+        for event in timeline:
+            row_wim   = []
+            row_prop  = []
+            row_bayes = []
+
+            for vi, vehicle in enumerate(vehicles):
+                st = states[vehicle.vehicle_id]
+
+                _, t_min_w, t_max_w, mu_w, sigma_w = mus_wim[vi]
+                sc_a = math.exp(
+                    -0.5 * ((event.timestamp - mu_w) / sigma_w) ** 2
+                )
+                row_wim.append(sc_a)
+
+                if mus_prop[vi] is None:
+                    sc_b = None
+                else:
+                    _, t_min_p, t_max_p, mu_p, sigma_p = mus_prop[vi]
+                    sc_b = math.exp(
+                        -0.5 * ((event.timestamp - mu_p) / sigma_p) ** 2
+                    )
+                row_prop.append(sc_b)
+
+                sc_bayes = sc_a if sc_b is None else st["prior"] * sc_b
+                row_bayes.append(sc_bayes)
+
+            scores_wim.append(row_wim)
+            scores_prop.append(row_prop)
+            scores_bayes.append(row_bayes)
+
+        sensor_data[sensor_id] = {
+            "pos"          : sensor_pos,
+            "timeline"     : timeline,
+            "scores_wim"   : scores_wim,
+            "scores_prop"  : scores_prop,
+            "scores_bayes" : scores_bayes,
+            "mus_wim"      : mus_wim,
+            "mus_prop"     : mus_prop,
+        }
+
+        # State update per vehicle
+        for vi, vehicle in enumerate(vehicles):
+            st = states[vehicle.vehicle_id]
+
+            if si == 0:
+                # Sensor 1: initialise Score B chain from best Score A
+                sc_a_vals = [scores_wim[ei][vi] for ei in range(len(timeline))]
+                best_sc_a = max(sc_a_vals)
+                if best_sc_a < MIN_SCORE_TO_UPDATE:
+                    print(f"  [DEBUG-NONE] V{vehicle.vehicle_id}  "
+                          f"sensor={sensor_id}  "
+                          f"best_score_A={best_sc_a:.4f} < {MIN_SCORE_TO_UPDATE}  "
+                          f"→ Score B chain NOT initialised")
+                    continue
+                best_ei    = int(sc_a_vals.index(best_sc_a))
+                best_event = timeline[best_ei]
+                st["last_anchor"] = {"pos": sensor_pos, "ts": best_event.timestamp}
+                print(f"  [BAYES-INIT] V{vehicle.vehicle_id}  "
+                      f"sensor={sensor_id}  "
+                      f"event={_to_ts(best_event.timestamp)}  "
+                      f"score_A={best_sc_a:.4f}  "
+                      f"→ hop chain initialised  prior=1.0")
+
+            else:
+                # Sensor 2+: Bayesian update from best Score B match
+                if mus_prop[vi] is None:
+                    continue
+
+                sc_b_vals  = [
+                    scores_prop[ei][vi] if scores_prop[ei][vi] is not None else 0.0
+                    for ei in range(len(timeline))
+                ]
+                best_sc_b  = max(sc_b_vals)
+                best_ei    = int(sc_b_vals.index(best_sc_b))
+                best_event = timeline[best_ei]
+                prior_before = st["prior"]
+                posterior    = prior_before * best_sc_b
+
+                if best_sc_b < MIN_SCORE_TO_UPDATE:
+                    print(f"  [BAYES-SKIP] V{vehicle.vehicle_id}  "
+                          f"sensor={sensor_id}  "
+                          f"likelihood={best_sc_b:.4f} < {MIN_SCORE_TO_UPDATE}  "
+                          f"prior carried forward={prior_before:.4f}  "
+                          f"→ anchor held at {st['last_anchor']['pos']:.1f}m")
+                    continue
+
+                # Fix 2 — backwards timestamp guard
+                if best_event.timestamp <= st["last_anchor"]["ts"]:
+                    print(f"  [FIX2-SKIP]  V{vehicle.vehicle_id}  "
+                          f"sensor={sensor_id}  "
+                          f"event={_to_ts(best_event.timestamp)}  "
+                          f"<= last_anchor.ts={_to_ts(st['last_anchor']['ts'])}  "
+                          f"→ anchor NOT updated (backwards timestamp)")
+                    continue
+
+                d_hop_log  = sensor_pos - st["last_anchor"]["pos"]
+                dt_hop_log = best_event.timestamp - st["last_anchor"]["ts"]
+                v_log_kmh  = (
+                    d_hop_log / dt_hop_log * 3.6
+                    if dt_hop_log > 0 else float("nan")
+                )
+
+                # Fix 1 — only advance prev_anchor on position change
+                if sensor_pos != st["last_anchor"]["pos"]:
+                    st["prev_anchor"] = st["last_anchor"]
+                    fix1_note = ""
+                else:
+                    fix1_note = "  [FIX1: prev_anchor held — co-located]"
+
+                st["last_anchor"] = {"pos": sensor_pos, "ts": best_event.timestamp}
+                st["prior"]       = posterior
+
+                print(f"  [BAYES-PROP] V{vehicle.vehicle_id}  "
+                      f"sensor={sensor_id}  "
+                      f"event={_to_ts(best_event.timestamp)}  "
+                      f"prior={prior_before:.4f}  "
+                      f"likelihood={best_sc_b:.4f}  "
+                      f"posterior={posterior:.4f}  "
+                      f"v_hop={v_log_kmh:.1f} km/h  "
+                      f"d_prop={d_hop_log:.1f}m  "
+                      f"anchor={sensor_pos:.1f}m"
+                      f"{fix1_note}")
+
+    return sensor_data
+
+
+# ---------------------------------------------------------------------------
+# Visualisations
+# ---------------------------------------------------------------------------
+# All three viz functions are compatible with all three scoring functions:
+#
+#   _build_sensor_data          → keys: scores, mus
+#   _build_sensor_data_propagated → keys: scores, mus, cumulative_confidence
+#   _build_sensor_data_dual     → keys: scores_wim, mus_wim, scores_prop,
+#                                        mus_prop, scores_bayes
+#
+# Each function calls _normalise_sensor_data() to unify keys before rendering.
+# Bayes panel / column / markers are shown only when Bayes data is available.
+# ---------------------------------------------------------------------------
+
+
+
+def _normalise_sensor_data(data: dict, vehicles: list) -> dict:
+    """
+    Unify sensor_data keys across all three scoring functions.
+ 
+    Returns a dict with consistent keys:
+        scores_wim   : [[float]]       — always present
+        mus_wim      : [tuple]         — always present
+        scores_bayes : [[float]] | None — None if not available
+        mus_prop     : [tuple|None]    — None entries where Score B unavailable
+        has_bayes    : bool            — whether to show Bayes panel/column
+    """
+    # Score A — works for all three functions
+    scores_wim = data.get("scores_wim", data.get("scores", []))
+    mus_wim    = data.get("mus_wim",    data.get("mus",    []))
+ 
+    # Score B windows — only from _build_sensor_data_dual
+    mus_prop = data.get("mus_prop", [])
+ 
+    # Score Bayes — three possible sources:
+    scores_bayes = data.get("scores_bayes", None)
+ 
+    # Events close to mu get high Bayes; events far from mu decay to zero.
+    if scores_bayes is None and "cumulative_confidence" in data:
+        cum      = data["cumulative_confidence"]
+        scores   = data.get("scores", [])
+        timeline = data.get("timeline", [])
+        n_events = len(timeline)
+ 
+        # Best raw score per vehicle across all events at this sensor
+        best_raw_per_vehicle = {}
+        for vi, v in enumerate(vehicles):
+            best = max(
+                (scores[ei][vi] for ei in range(n_events)),
+                default=0.0
+            ) if scores else 0.0
+            best_raw_per_vehicle[v.vehicle_id] = best
+ 
+        # Per-event Bayes score = prior x raw_gaussian
+        scores_bayes = []
+        for ei in range(n_events):
+            row = []
+            for vi, v in enumerate(vehicles):
+                raw_sc   = scores[ei][vi] if scores else 0.0
+                best_raw = best_raw_per_vehicle[v.vehicle_id]
+                cum_conf = cum.get(v.vehicle_id, 0.0)
+                prior    = (cum_conf / best_raw) if best_raw > 0 else 0.0
+                row.append(prior * raw_sc)
+            scores_bayes.append(row)
+ 
+    has_bayes = (
+        scores_bayes is not None
+        and len(scores_bayes) > 0
+    )
+ 
+    return {
+        "scores_wim"  : scores_wim,
+        "mus_wim"     : mus_wim,
+        "scores_bayes": scores_bayes,
+        "mus_prop"    : mus_prop,
+        "has_bayes"   : has_bayes,
+    }
+ 
+
+def viz_heatmap(sensor_data: dict, vehicles: list,
+                output_dir: str = ".") -> None:
+    """
+    Per sensor:
+      Always : Score A heatmap (WIM Gaussian)
+      If Bayes available : second heatmap for Score Bayes
+
+    Compatible with all three scoring functions.
+    Saved: <output_dir>/viz1_heatmap.png
+    """
+    import os
+    import matplotlib.pyplot as plt
+    import numpy as np
+    os.makedirs(output_dir, exist_ok=True)
+
     sensors = list(sensor_data.keys())
     n_sens  = len(sensors)
     if n_sens == 0:
         print("[VIZ1] No data"); return
 
-    n_cols  = max(len(sensor_data[s]["timeline"]) for s in sensors)
-    n_rows  = len(vehicles)
+    # Check if any sensor has Bayes data
+    has_bayes_any = any(
+        _normalise_sensor_data(sensor_data[s], vehicles)["has_bayes"]
+        for s in sensors
+    )
+    n_cols_fig = 2 if has_bayes_any else 1
+    n_veh      = len(vehicles)
+    n_events   = max((len(sensor_data[s]["timeline"]) for s in sensors), default=1)
 
     fig, axes = plt.subplots(
-        n_sens, 1,
-        figsize=(max(10, n_cols * 1.2), n_sens * (n_rows * 0.55 + 1.2)),
-        squeeze=False
+        n_sens, n_cols_fig,
+        figsize=(max(10, n_events * 1.8) * n_cols_fig,
+                 n_sens * (n_veh * 0.6 + 1.5)),
+        squeeze=False,
+        gridspec_kw={"wspace": 0.35}
     )
-    fig.suptitle("Probability Heatmap per Sensor",
-                 fontsize=13, fontweight="bold")
 
-    cmap = plt.cm.YlOrRd
+    title = "Heatmap — Score A (WIM Gaussian)"
+    if has_bayes_any:
+        title += "  |  Score Bayes (Posterior)"
+    fig.suptitle(title, fontsize=13, fontweight="bold")
+
+    score_cmap = plt.cm.YlOrRd
+    y_labels   = [
+        f"V{v.vehicle_id}  {v.v_est*3.6:.0f}km/h  {_to_ts(v.entry_ts)}"
+        for v in vehicles
+    ]
 
     for si, sensor_id in enumerate(sensors):
-        data      = sensor_data[sensor_id]
-        timeline  = data["timeline"]
-        scores    = data["scores"]
-        ax        = axes[si][0]
-        n_events  = len(timeline)
+        data       = sensor_data[sensor_id]
+        timeline   = data["timeline"]
+        n_ev       = len(timeline)
+        sensor_pos = data["pos"]
+        x_labels   = [_to_ts(e.timestamp) for e in timeline]
+        nd         = _normalise_sensor_data(data, vehicles)
 
-        matrix = np.array(scores).T    # shape: (n_vehicles, n_events)
+        mat_a = np.zeros((n_veh, max(n_ev, 1)))
+        mat_y = np.zeros((n_veh, max(n_ev, 1)))
+        for ei in range(n_ev):
+            for vi in range(n_veh):
+                mat_a[vi, ei] = nd["scores_wim"][ei][vi] if nd["scores_wim"] else 0.0
+                if nd["has_bayes"]:
+                    mat_y[vi, ei] = nd["scores_bayes"][ei][vi]
 
-        im = ax.imshow(matrix, aspect="auto", cmap=cmap,
-                       vmin=0, vmax=1, interpolation="nearest")
+        def _draw(ax, matrix, title_suffix):
+            im = ax.imshow(matrix, aspect="auto", cmap=score_cmap,
+                           vmin=0, vmax=1, interpolation="nearest")
+            for vi in range(n_veh):
+                for ci in range(n_ev):
+                    val = matrix[vi, ci]
+                    ax.text(ci, vi, f"{val:.2f}", ha="center", va="center",
+                            fontsize=7, color="white" if val > 0.6 else "black")
+            ax.set_yticks(range(n_veh))
+            ax.set_yticklabels(y_labels, fontsize=7)
+            ax.set_xticks(range(n_ev))
+            ax.set_xticklabels(x_labels, rotation=35, ha="right", fontsize=7)
+            ax.set_title(f"Sensor {sensor_id}  {sensor_pos:.1f}m  |  {title_suffix}",
+                         fontsize=9, pad=4)
+            plt.colorbar(im, ax=ax, fraction=0.02, pad=0.02).set_label("Score", fontsize=7)
 
-        # Annotate each cell with score value
-        for vi in range(n_rows):
-            for ei in range(n_events):
-                val = matrix[vi, ei]
-                ax.text(ei, vi, f"{val:.2f}",
-                        ha="center", va="center",
-                        fontsize=7,
-                        color="white" if val > 0.6 else "black")
+        _draw(axes[si][0], mat_a, "Score A — WIM Gaussian")
+        if has_bayes_any:
+            _draw(axes[si][1], mat_y,
+                  "Score Bayes — Posterior" if nd["has_bayes"] else "Score Bayes — N/A")
 
-        # Y axis — vehicle labels
-        ax.set_yticks(range(n_rows))
-        ax.set_yticklabels(
-            [f"V{v.vehicle_id}  {v.v_est*3.6:.0f}km/h  {_to_ts(v.entry_ts)}"
-             for v in vehicles],
-            fontsize=7
-        )
-
-        # X axis — event timestamps
-        ax.set_xticks(range(n_events))
-        ax.set_xticklabels(
-            [_to_ts(e.timestamp) for e in timeline],
-            rotation=35, ha="right", fontsize=7
-        )
-
-        ax.set_title(
-            f"Sensor {sensor_id}  pos={data['pos']:.1f}m  "
-            f"({n_events} events)",
-            fontsize=9, pad=4
-        )
-        plt.colorbar(im, ax=ax, fraction=0.02, pad=0.02).set_label(
-            "Score", fontsize=7)
-
-    plt.tight_layout()
-    plt.savefig("viz_options/viz1_heatmap.png", dpi=150, bbox_inches="tight")
-    print("[VIZ1] Saved: viz1_heatmap.png")
+    #plt.tight_layout()
+    out1 = os.path.join(output_dir, "viz1_heatmap.png")
+    plt.savefig(out1, dpi=150, bbox_inches="tight")
+    print(f"[VIZ1] Saved: {out1}")
     plt.show()
 
 
-# ---------------------------------------------------------------------------
-# Suggestion 2 — Vehicle Swimlane Timeline
-# ---------------------------------------------------------------------------
-
-def viz_swimlane(
-    sensor_data      : dict,
-    sensor_positions : dict[str, float],
-    vehicles         : list[Vehicle],
-) -> None:
+def viz_gaussian_curves(sensor_data: dict, vehicles: list,
+                        output_dir: str = ".") -> None:
     """
-    One horizontal lane per vehicle.
-    X = timestamp.  Y = lane (one per vehicle).
-    Dots = events matched to this vehicle (sized by score).
-    Vertical dashed lines = sensor positions (labelled by arrival time).
-    Shows each vehicle's journey across the bridge left-to-right.
+    One subplot per sensor.
+    Solid curve   = Score A Gaussian  (always)
+    Dashed curve  = Score B Gaussian  (dual only, where available)
+    Filled circle = best Score A vehicle per event  (always)
+    Hollow diamond = best Score Bayes vehicle per event  (when available)
+ 
+    Compatible with all three scoring functions.
+    Saved: <output_dir>/viz3_gaussian_curves.png
     """
+    import os
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     import numpy as np
-
-    n_veh  = len(vehicles)
-    cmap   = cm.get_cmap("tab10", n_veh)
-    colors = {v.vehicle_id: cmap(i) for i, v in enumerate(vehicles)}
-
-    fig, ax = plt.subplots(figsize=(18, max(5, n_veh * 0.9)))
-    fig.suptitle("Suggestion 2 — Vehicle Swimlane Timeline",
-                 fontsize=13, fontweight="bold")
-
-    # Draw one lane per vehicle
-    for vi, vehicle in enumerate(vehicles):
-        lane  = vi
-        color = colors[vehicle.vehicle_id]
-
-        # Lane baseline
-        ax.axhline(lane, color=color, linewidth=0.6, alpha=0.3)
-
-        # Lane label
-        ax.text(
-            -0.01, lane,
-            f"V{vehicle.vehicle_id}  {vehicle.v_est*3.6:.0f}km/h\n"
-            f"{_to_ts(vehicle.entry_ts)}",
-            transform=ax.get_yaxis_transform(),
-            ha="right", va="center", fontsize=7, color=color
-        )
-
-        # Plot events belonging to this vehicle across all sensors
-        for sensor_id, data in sensor_data.items():
-            timeline = data["timeline"]
-            scores   = data["scores"]
-
-            for ei, event in enumerate(timeline):
-                score = scores[ei][vi]
-                if score < 0.05:
-                    continue
-                size = 40 + score * 200   # bigger dot = higher score
-                ax.scatter(
-                    event.timestamp, lane,
-                    s=size, color=color, alpha=0.85,
-                    edgecolors="black", linewidths=0.5, zorder=4
-                )
-                ax.text(
-                    event.timestamp, lane + 0.08,
-                    f"{score:.2f}",
-                    ha="center", fontsize=6, color=color
-                )
-
-    # Draw vertical dashed lines for each sensor (at mu for V0 as reference)
-    for sensor_id, data in sensor_data.items():
-        _, t_min, t_max, mu, sigma = data["mus"][0]
-        ax.axvline(mu, color="grey", linestyle="--",
-                   linewidth=0.7, alpha=0.4)
-        ax.text(mu, n_veh - 0.1,
-                f"{sensor_id[:8]}\n{data['pos']:.0f}m",
-                ha="center", fontsize=6, color="grey",
-                rotation=0)
-
-    ax.set_yticks(range(n_veh))
-    ax.set_yticklabels([f"V{v.vehicle_id}" for v in vehicles], fontsize=8)
-    ax.set_xlabel("Timestamp", fontsize=9)
-    ax.set_ylabel("Vehicle lane", fontsize=9)
-    ax.set_ylim(-0.6, n_veh - 0.4)
-    ax.grid(axis="x", linestyle="--", alpha=0.25)
-
-    raw_ticks = ax.get_xticks()
-    ax.set_xticklabels(
-        [_to_ts(t) for t in raw_ticks],
-        rotation=30, ha="right", fontsize=7
-    )
-
-    plt.tight_layout()
-    plt.savefig("viz_options/viz2_swimlane.png", dpi=150, bbox_inches="tight")
-    print("[VIZ2] Saved: viz2_swimlane.png")
-    plt.show()
-
-
-# ---------------------------------------------------------------------------
-# Suggestion 3 — Per-sensor Gaussian Probability Curves
-# ---------------------------------------------------------------------------
-
-def viz_gaussian_curves(sensor_data: dict, vehicles: list[Vehicle]) -> None:
-    """
-    One subplot per sensor, stacked vertically.
-    X = timestamp.
-    Y = Gaussian probability score (0 to 1).
-    One coloured curve per vehicle showing expected arrival distribution.
-    Vertical markers where real events land — height = score at that point.
-    Peaks = expected arrival time. Events at peak = perfect match.
-    """
-    import matplotlib.pyplot as plt
-    import matplotlib.cm as cm
-    import numpy as np
-
+    os.makedirs(output_dir, exist_ok=True)
+ 
     sensors = list(sensor_data.keys())
     n_sens  = len(sensors)
     n_veh   = len(vehicles)
     if n_sens == 0:
         print("[VIZ3] No data"); return
-
+ 
     cmap   = cm.get_cmap("tab10", n_veh)
     colors = {v.vehicle_id: cmap(i) for i, v in enumerate(vehicles)}
-
-    fig, axes = plt.subplots(
-        n_sens, 1,
-        figsize=(16, n_sens * 3.5),
-        sharex=False, squeeze=False
+ 
+    # ── Compute GLOBAL time range across ALL sensors ──────────────────────
+    # Used to set the same x-axis on every subplot for easy cross-sensor
+    # comparison of event timing.
+    global_times = []
+    for sensor_id in sensors:
+        data     = sensor_data[sensor_id]
+        nd       = _normalise_sensor_data(data, vehicles)
+        mus_wim  = nd["mus_wim"]
+        mus_prop = nd["mus_prop"]
+        global_times += [e.timestamp for e in data["timeline"]]
+        for tup in mus_wim:
+            if tup:
+                _, t_min, t_max, mu, sigma = tup
+                global_times += [t_min - sigma, t_max + sigma]
+        for tup in mus_prop:
+            if tup:
+                _, t_min, t_max, mu, sigma = tup
+                global_times += [t_min - sigma, t_max + sigma]
+ 
+    if not global_times:
+        print("[VIZ3] No time data found"); return
+ 
+    global_t_lo = min(global_times)
+    global_t_hi = max(global_times)
+    global_t_range = np.linspace(global_t_lo, global_t_hi, 1200)
+ 
+    fig, axes = plt.subplots(n_sens, 1, figsize=(16, n_sens * 4.0),
+                             sharex=True, squeeze=False)
+    fig.suptitle(
+        "Gaussian Curves — Score A (solid)  Score B (dashed, dual only)"
+        "  Score Bayes on events (◇, when available)",
+        fontsize=13, fontweight="bold"
     )
-    fig.suptitle("Gaussian Arrival Curves per Sensor",
-                 fontsize=13, fontweight="bold")
-
+ 
     for si, sensor_id in enumerate(sensors):
         data     = sensor_data[sensor_id]
         timeline = data["timeline"]
-        mus      = data["mus"]
-        scores   = data["scores"]
+        nd       = _normalise_sensor_data(data, vehicles)
+        mus_wim  = nd["mus_wim"]
+        mus_prop = nd["mus_prop"]
         ax       = axes[si][0]
-
-        # Time range: span all vehicle windows + event times
-        all_times = [e.timestamp for e in timeline]
-        for _, t_min, t_max, mu, sigma in mus:
-            all_times += [t_min - sigma, t_max + sigma]
-
-        t_lo = min(all_times)
-        t_hi = max(all_times)
-        t_range = np.linspace(t_lo, t_hi, 500)
-
-        # Draw Gaussian curve for each vehicle
-        for vehicle in vehicles:
-            vid, t_min, t_max, mu, sigma = mus[vehicle.vehicle_id]
-            color  = colors[vid]
-            curve  = np.exp(-0.5 * ((t_range - mu) / sigma) ** 2)
-            ax.plot(t_range, curve, color=color,
-                    linewidth=1.8, alpha=0.85,
-                    label=f"V{vid}  mu={_to_ts(mu)}  σ={sigma:.1f}s")
-            ax.fill_between(t_range, curve, alpha=0.06, color=color)
-            # mu marker
-            ax.axvline(mu, color=color, linewidth=0.8,
-                       linestyle=":", alpha=0.6)
-
-        # Plot real events as vertical stems
+ 
+        if not timeline:
+            ax.set_title(f"Sensor {sensor_id}  {data['pos']:.1f}m  — no events",
+                         fontsize=9)
+            continue
+ 
+        t_range        = global_t_range
+        legend_handles = []
+ 
+        for vi, vehicle in enumerate(vehicles):
+            color = colors[vehicle.vehicle_id]
+ 
+            # Score A — solid curve (always)
+            if mus_wim and mus_wim[vi] is not None:
+                _, t_min_w, t_max_w, mu_w, sigma_w = mus_wim[vi]
+                curve_a = np.exp(-0.5 * ((t_range - mu_w) / sigma_w) ** 2)
+                line_a, = ax.plot(t_range, curve_a, color=color,
+                                  linewidth=1.8, alpha=0.9, linestyle="-",
+                                  label=f"V{vehicle.vehicle_id} A  mu={_to_ts(mu_w)}  σ={sigma_w:.1f}s")
+                ax.fill_between(t_range, curve_a, alpha=0.05, color=color)
+                ax.axvline(mu_w, color=color, linewidth=0.7, linestyle=":", alpha=0.5)
+                legend_handles.append(line_a)
+ 
+            # Score B — dashed curve (dual only, where window available)
+            if mus_prop and vi < len(mus_prop) and mus_prop[vi] is not None:
+                _, t_min_p, t_max_p, mu_p, sigma_p = mus_prop[vi]
+                curve_b = np.exp(-0.5 * ((t_range - mu_p) / sigma_p) ** 2)
+                line_b, = ax.plot(t_range, curve_b, color=color,
+                                  linewidth=1.4, alpha=0.7, linestyle="--",
+                                  label=f"V{vehicle.vehicle_id} B  mu={_to_ts(mu_p)}  σ={sigma_p:.1f}s")
+                ax.axvline(mu_p, color=color, linewidth=0.7, linestyle="-.", alpha=0.4)
+                legend_handles.append(line_b)
+ 
         for ei, event in enumerate(timeline):
-            best_vi = int(max(range(n_veh), key=lambda i: scores[ei][i]))
-            best_sc = scores[ei][best_vi]
-            color   = colors[vehicles[best_vi].vehicle_id]
-            ax.vlines(event.timestamp, 0, best_sc,
-                      color=color, linewidth=2, zorder=5)
-            ax.scatter(event.timestamp, best_sc,
-                       color=color, s=50, zorder=6,
-                       edgecolors="black", linewidths=0.5)
-            ax.text(event.timestamp, best_sc + 0.03,
-                    f"{_to_ts(event.timestamp)}\n{best_sc:.2f}",
-                    ha="center", fontsize=6, color=color)
-
-        ax.set_ylim(-0.05, 1.15)
-        ax.set_ylabel("Probability score", fontsize=8)
+            sc_a_row   = nd["scores_wim"][ei]   if nd["scores_wim"]   else []
+            sc_bay_row = nd["scores_bayes"][ei]  if nd["has_bayes"]    else []
+ 
+            # Best Score A — filled circle + stem (always)
+            if sc_a_row:
+                best_vi_a = int(np.argmax(sc_a_row))
+                best_sc_a = sc_a_row[best_vi_a]
+                color_a   = colors[vehicles[best_vi_a].vehicle_id]
+                ax.vlines(event.timestamp, 0, best_sc_a,
+                          color=color_a, linewidth=2.0, zorder=5)
+                ax.scatter(event.timestamp, best_sc_a, color=color_a, s=55,
+                           zorder=6, edgecolors="black", linewidths=0.5, marker="o")
+                ax.text(event.timestamp, best_sc_a + 0.04,
+                        f"{_to_ts(event.timestamp)}\nA:{best_sc_a:.2f}",
+                        ha="center", fontsize=6, color=color_a)
+ 
+            # Best Score Bayes — hollow diamond (when available)
+            if sc_bay_row:
+                best_vi_b = int(np.argmax(sc_bay_row))
+                best_sc_b = sc_bay_row[best_vi_b]
+                color_b   = colors[vehicles[best_vi_b].vehicle_id]
+                ax.scatter(event.timestamp, best_sc_b, color="none", s=85,
+                           zorder=7, edgecolors=color_b, linewidths=1.8, marker="D")
+                ax.text(event.timestamp, best_sc_b - 0.10,
+                        f"Bay:{best_sc_b:.2f}",
+                        ha="center", fontsize=6, color=color_b, style="italic")
+ 
+        subtitle_parts = ["solid=Score A"]
+        if any(t is not None for t in mus_prop):
+            subtitle_parts.append("dashed=Score B")
+        if nd["has_bayes"]:
+            subtitle_parts.append("◇=Score Bayes")
+ 
+        ax.set_ylim(-0.12, 1.18)
+        ax.set_ylabel("Score", fontsize=8)
         ax.set_title(
-            f"Sensor {sensor_id}  pos={data['pos']:.1f}m",
+            f"Sensor {sensor_id}  pos={data['pos']:.1f}m  ({len(timeline)} events)"
+            f"  — {'   '.join(subtitle_parts)}",
             fontsize=9
         )
-        ax.legend(fontsize=6, loc="upper right",
-                  framealpha=0.8, ncol=2)
+        ax.legend(handles=legend_handles, fontsize=6,
+                  loc="upper right", framealpha=0.85, ncol=2)
         ax.grid(axis="y", linestyle="--", alpha=0.3)
-
-        raw_ticks = ax.get_xticks()
-        ax.set_xticklabels(
-            [_to_ts(t) for t in raw_ticks],
-            rotation=25, ha="right", fontsize=7
-        )
-
+        ax.set_xlim(global_t_lo, global_t_hi)
+ 
+        # Only label x ticks on bottom subplot — shared axis handles the rest
+        if si == n_sens - 1:
+            raw_ticks = ax.get_xticks()
+            ax.set_xticklabels([_to_ts(t) for t in raw_ticks],
+                               rotation=25, ha="right", fontsize=7)
+            ax.set_xlabel("Timestamp", fontsize=8)
+ 
+    # Shared x-axis label formatting pass for all axes
+    fig.align_ylabels(axes[:, 0])
+ 
     plt.tight_layout()
-    plt.savefig("viz_options/viz3_gaussian_curves.png", dpi=150, bbox_inches="tight")
-    print("[VIZ3] Saved: viz3_gaussian_curves.png")
+    out3 = os.path.join(output_dir, "viz3_gaussian_curves.png")
+    plt.savefig(out3, dpi=150, bbox_inches="tight")
+    print(f"[VIZ3] Saved: {out3}")
     plt.show()
+ 
 
 
-# ---------------------------------------------------------------------------
-# Suggestion 4 — Event Ownership Table
-# ---------------------------------------------------------------------------
-
-def viz_ownership_table(sensor_data: dict, vehicles: list[Vehicle]) -> None:
+def viz_ownership_table(sensor_data: dict, vehicles: list,
+                        output_dir: str = ".") -> None:
     """
     One table per sensor.
-    Rows = events (timestamp, amplitude).
-    Columns = vehicles.
-    Cell = probability score with background colour intensity.
-    Highest score in each row outlined in bold — the "owner" vehicle.
-    Clean, no clutter, works at any scale.
+    Always    : Score A column per vehicle
+    If Bayes  : Score Bayes column per vehicle alongside Score A
+
+    Compatible with all three scoring functions.
+    Saved: <output_dir>/viz4_ownership_table.png
     """
+    import os
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
-    import matplotlib.colors as mcolors
     import numpy as np
+    os.makedirs(output_dir, exist_ok=True)
 
-    sensors = list(sensor_data.keys())
-    n_sens  = len(sensors)
-    n_veh   = len(vehicles)
+    sensors  = list(sensor_data.keys())
+    n_sens   = len(sensors)
+    n_veh    = len(vehicles)
     if n_sens == 0:
         print("[VIZ4] No data"); return
 
-    cmap    = cm.get_cmap("tab10", n_veh)
-    v_colors = [cmap(i) for i in range(n_veh)]
-
-    # One figure, one subplot per sensor stacked vertically
-    row_h   = 0.45
-    fig_h   = sum(
-        max(2.0, len(sensor_data[s]["timeline"]) * row_h + 1.5)
+    # Check globally whether any sensor has Bayes
+    has_bayes_any = any(
+        _normalise_sensor_data(sensor_data[s], vehicles)["has_bayes"]
         for s in sensors
     )
-    fig, axes = plt.subplots(
-        n_sens, 1,
-        figsize=(max(10, n_veh * 1.8 + 4), fig_h),
-        squeeze=False
-    )
-    fig.suptitle("Events probabilities Table",
-                 fontsize=13, fontweight="bold")
+    cols_per_veh = 2 if has_bayes_any else 1
 
+    cmap       = cm.get_cmap("tab10", n_veh)
+    v_colors   = [cmap(i) for i in range(n_veh)]
     score_cmap = plt.cm.YlOrRd
+
+    row_h = 0.45
+    fig_h = sum(max(2.2, len(sensor_data[s]["timeline"]) * row_h + 1.8)
+                for s in sensors)
+    fig_w = max(12, n_veh * (2.2 * cols_per_veh) + 4)
+
+    fig, axes = plt.subplots(n_sens, 1, figsize=(fig_w, fig_h), squeeze=False)
+
+    title = "Ownership Table — Score A (WIM)"
+    if has_bayes_any:
+        title += " | Score Bayes (Posterior)"
+    fig.suptitle(title, fontsize=13, fontweight="bold")
 
     for si, sensor_id in enumerate(sensors):
         data     = sensor_data[sensor_id]
         timeline = data["timeline"]
-        scores   = data["scores"]
+        nd       = _normalise_sensor_data(data, vehicles)
         ax       = axes[si][0]
         ax.axis("off")
 
@@ -925,89 +1117,401 @@ def viz_ownership_table(sensor_data: dict, vehicles: list[Vehicle]) -> None:
             ax.set_title(f"Sensor {sensor_id} — no events", fontsize=9)
             continue
 
-        # Column headers: row labels + one per vehicle
-        col_labels = ["Timestamp", "Amplitude"] + \
-                     [f"V{v.vehicle_id}\n{v.v_est*3.6:.0f}km/h"
-                      for v in vehicles]
+        # Build column headers
+        col_labels = ["Timestamp", "Amplitude"]
+        for v in vehicles:
+            col_labels.append(f"V{v.vehicle_id}\nA")
+            if has_bayes_any:
+                col_labels.append(f"V{v.vehicle_id}\nBay")
 
-        # Build table data
         cell_text   = []
         cell_colors = []
 
         for ei, event in enumerate(timeline):
-            row_scores = scores[ei]
-            best_vi    = int(np.argmax(row_scores))
+            sc_a_row   = nd["scores_wim"][ei]  if nd["scores_wim"]  else [0.0] * n_veh
+            sc_bay_row = nd["scores_bayes"][ei] if nd["has_bayes"]   else None
 
-            text_row   = [
-                _to_ts(event.timestamp),
-                f"{event.peak_amplitude:+.5f}"
-            ]
-            color_row  = ["#f0f0f0", "#f0f0f0"]
+            text_row  = [_to_ts(event.timestamp), f"{event.peak_amplitude:+.5f}"]
+            color_row = ["#f0f0f0", "#f0f0f0"]
 
-            for vi, sc in enumerate(row_scores):
-                text_row.append(f"{sc:.3f}")
-                # Background intensity from score
-                rgba = list(score_cmap(sc))
-                rgba[3] = 0.75
-                color_row.append(rgba)
+            for vi in range(n_veh):
+                sc_a = sc_a_row[vi]
+                text_row.append(f"{sc_a:.3f}")
+                rgba_a = list(score_cmap(sc_a)); rgba_a[3] = 0.75
+                color_row.append(rgba_a)
+
+                if has_bayes_any:
+                    sc_bay = sc_bay_row[vi] if sc_bay_row else 0.0
+                    text_row.append(f"{sc_bay:.3f}")
+                    rgba_bay = list(score_cmap(sc_bay)); rgba_bay[3] = 0.75
+                    color_row.append(rgba_bay)
 
             cell_text.append(text_row)
             cell_colors.append(color_row)
 
-        tbl = ax.table(
-            cellText   = cell_text,
-            cellColours= cell_colors,
-            colLabels  = col_labels,
-            cellLoc    = "center",
-            loc        = "center",
-        )
+        tbl = ax.table(cellText=cell_text, cellColours=cell_colors,
+                       colLabels=col_labels, cellLoc="center", loc="center")
         tbl.auto_set_font_size(False)
         tbl.set_fontsize(7.5)
         tbl.scale(1, 1.6)
 
-        # Bold border on highest-score vehicle cell per row
+        # Bold black border = Score A owner per row
         for ei in range(n_events):
-            best_vi = int(np.argmax(scores[ei]))
-            cell    = tbl[(ei + 1, best_vi + 2)]  # +1 header, +2 label cols
-            cell.set_edgecolor("black")
-            cell.set_linewidth(2.0)
+            sc_a_row  = nd["scores_wim"][ei] if nd["scores_wim"] else [0.0] * n_veh
+            best_vi_a = int(np.argmax(sc_a_row))
+            col_a     = 2 + best_vi_a * cols_per_veh
+            tbl[(ei+1, col_a)].set_edgecolor("black")
+            tbl[(ei+1, col_a)].set_linewidth(2.2)
 
-        # Header row styling
+        # Bold colour border = Score Bayes owner per row
+        if has_bayes_any:
+            for ei in range(n_events):
+                sc_bay_row = nd["scores_bayes"][ei] if nd["has_bayes"] else [0.0] * n_veh
+                best_vi_y  = int(np.argmax(sc_bay_row))
+                col_bay    = 2 + best_vi_y * cols_per_veh + 1
+                tbl[(ei+1, col_bay)].set_edgecolor(v_colors[best_vi_y])
+                tbl[(ei+1, col_bay)].set_linewidth(2.2)
+
+        # Base header styling
         for ci in range(len(col_labels)):
-            header = tbl[(0, ci)]
-            header.set_facecolor("#2c3e50")
-            header.set_text_props(color="white", fontweight="bold")
+            tbl[(0, ci)].set_facecolor("#2c3e50")
+            tbl[(0, ci)].set_text_props(color="white", fontweight="bold")
 
+        # Vehicle header colour coding
+        for vi, v in enumerate(vehicles):
+            col_a = 2 + vi * cols_per_veh
+            c     = list(v_colors[vi]); c[3] = 1.0
+            lum   = 0.299*c[0] + 0.587*c[1] + 0.114*c[2]
+            txt   = "white" if lum < 0.55 else "black"
+            tbl[(0, col_a)].set_facecolor(c)
+            tbl[(0, col_a)].set_text_props(color=txt, fontweight="bold")
+
+            if has_bayes_any:
+                col_bay = col_a + 1
+                c_bay   = [min(x+0.25, 1.0) for x in c[:3]] + [1.0]
+                lum_bay = 0.299*c_bay[0] + 0.587*c_bay[1] + 0.114*c_bay[2]
+                tbl[(0, col_bay)].set_facecolor(c_bay)
+                tbl[(0, col_bay)].set_text_props(
+                    color="white" if lum_bay < 0.55 else "black",
+                    fontweight="bold"
+                )
+
+        subtitle = "A = WIM Gaussian"
+        if has_bayes_any:
+            subtitle += "   Bay = Bayesian posterior"
         ax.set_title(
-            f"Sensor {sensor_id}  pos={data['pos']:.1f}m  "
-            f"({n_events} events)",
+            f"Sensor {sensor_id}  pos={data['pos']:.1f}m  ({n_events} events)  | {subtitle}",
             fontsize=9, pad=8, loc="left"
         )
 
     plt.tight_layout()
-    plt.savefig("viz_options/viz4_probabilities_table.png", dpi=150, bbox_inches="tight")
-    print("[VIZ4] Saved: viz4_probabilities_table.png")
+    out4 = os.path.join(output_dir, "viz4_ownership_table.png")
+    plt.savefig(out4, dpi=150, bbox_inches="tight")
+    print(f"[VIZ4] Saved: {out4}")
     plt.show()
 
+
+
+def viz_vehicle_progression(
+    sensor_data      : dict,
+    vehicles         : list,
+    sensor_positions : dict,
+    output_dir       : str = ".",
+) -> None:
+    """
+    Interactive Plotly visualisation of vehicle progression across all
+    boundary sensors.
+
+    X axis  : sensor positions in order (labelled by position in metres)
+    Y axis  : elapsed seconds since vehicle's first detected timestamp
+              above threshold (Y=0 = first actual detection, always >= 0)
+              Falls back to t_min_w at sensor 1 if no detection found.
+
+    One line per vehicle, fixed colour per vehicle.
+    Points coloured by Score Bayes opacity:
+        fully opaque  = high confidence
+        faded         = near threshold
+
+    Only plots points where best Score Bayes >= MIN_SCORE_TO_UPDATE.
+    Gaps in line where vehicle is below threshold at a sensor.
+
+    Saved: <output_dir>/viz_progression.html  (interactive)
+           <output_dir>/viz_progression.png   (static, requires kaleido)
+    """
+    import os
+    import numpy as np
+    import plotly.graph_objects as go
+    import plotly.colors as pc
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    MIN_SCORE_TO_UPDATE = 0.05
+
+    # ── Sensors in position order ─────────────────────────────────────────
+    ordered     = sorted(sensor_positions.items(), key=lambda x: x[1])
+    sensor_ids  = [s for s, _ in ordered]
+    sensor_poss = {s: p for s, p in ordered}
+
+    # X axis uses integer indices for even spacing; labels show position
+    x_indices = list(range(len(sensor_ids)))
+    x_tick_labels = [f"{sensor_poss[s]:.0f}m" for s in sensor_ids]
+
+    # ── Colour palette ────────────────────────────────────────────────────
+    palette     = pc.qualitative.Plotly + pc.qualitative.Dark24
+    base_colors = [palette[i % len(palette)] for i in range(len(vehicles))]
+
+    def _hex_to_rgb(h):
+        h = h.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+    def _score_to_rgba(hex_color, score, min_alpha=0.15, max_alpha=1.0):
+        alpha = min_alpha + (max_alpha - min_alpha) * float(score)
+        r, g, b = _hex_to_rgb(hex_color)
+        return f"rgba({r},{g},{b},{alpha:.2f})"
+
+    # ── Find Y=0 anchor per vehicle ───────────────────────────────────────
+    # Anchor = actual first detected timestamp above threshold.
+    # Fallback = t_min_w at first sensor (earliest possible arrival).
+    first_sensor_pos = sensor_poss[sensor_ids[0]]
+
+    anchors = {}
+    for vi, vehicle in enumerate(vehicles):
+        # Fallback anchor: earliest possible arrival at sensor 1
+        d_wim  = first_sensor_pos - (-3540.0)
+        t_min_w = vehicle.entry_ts + d_wim / vehicle.v_max
+        fallback = t_min_w
+
+        # Search for actual first detection above threshold
+        first_ts = None
+        for sensor_id in sensor_ids:
+            data = sensor_data.get(sensor_id)
+            if data is None or not data.get("timeline"):
+                continue
+            timeline     = data["timeline"]
+            scores_bayes = data.get("scores_bayes", [])
+            if not scores_bayes:
+                continue
+            bay_vals = [
+                scores_bayes[ei][vi] if scores_bayes[ei][vi] is not None else 0.0
+                for ei in range(len(timeline))
+            ]
+            best_ei    = int(np.argmax(bay_vals))
+            best_bayes = bay_vals[best_ei]
+            if best_bayes >= MIN_SCORE_TO_UPDATE:
+                ts = timeline[best_ei].timestamp
+                if first_ts is None or ts < first_ts:
+                    first_ts = ts
+
+        anchors[vehicle.vehicle_id] = first_ts if first_ts is not None else fallback
+
+    # ── Build traces ──────────────────────────────────────────────────────
+    fig = go.Figure()
+
+    for vi, vehicle in enumerate(vehicles):
+        base_color = base_colors[vi]
+        anchor_ts  = anchors[vehicle.vehicle_id]
+
+        x_line   = []   # x indices for line (with None gaps)
+        y_line   = []
+
+        x_pts    = []   # x indices for detected points only
+        y_pts    = []
+        pt_colors = []
+        pt_hover  = []
+        pt_sizes  = []
+
+        for xi, sensor_id in enumerate(sensor_ids):
+            data = sensor_data.get(sensor_id)
+            if data is None or not data.get("timeline"):
+                x_line.append(xi); y_line.append(None)
+                continue
+
+            timeline     = data["timeline"]
+            scores_bayes = data.get("scores_bayes", [])
+            scores_wim   = data.get("scores_wim", data.get("scores", []))
+
+            if not scores_bayes:
+                x_line.append(xi); y_line.append(None)
+                continue
+
+            bay_vals = [
+                scores_bayes[ei][vi] if scores_bayes[ei][vi] is not None else 0.0
+                for ei in range(len(timeline))
+            ]
+            best_ei    = int(np.argmax(bay_vals))
+            best_bayes = bay_vals[best_ei]
+
+            if best_bayes < MIN_SCORE_TO_UPDATE:
+                x_line.append(xi); y_line.append(None)
+                continue
+
+            best_sc_a  = (
+                scores_wim[best_ei][vi]
+                if scores_wim and best_ei < len(scores_wim) else 0.0
+            )
+            best_event = timeline[best_ei]
+            elapsed    = best_event.timestamp - anchor_ts
+            actual_ts  = _to_ts(best_event.timestamp)
+            pos_m      = sensor_poss[sensor_id]
+
+            # Point size scales slightly with confidence
+            pt_size = 8 + best_bayes * 8
+
+            x_line.append(xi);    y_line.append(elapsed)
+            x_pts.append(xi);     y_pts.append(elapsed)
+            pt_colors.append(_score_to_rgba(base_color, best_bayes))
+            pt_sizes.append(pt_size)
+            pt_hover.append(
+                f"<b>V{vehicle.vehicle_id}  {vehicle.v_est*3.6:.0f} km/h</b><br>"
+                f"─────────────────────<br>"
+                f"Sensor   : {sensor_id}<br>"
+                f"Position : {pos_m:.1f} m<br>"
+                f"Timestamp: {actual_ts}<br>"
+                f"Elapsed  : {elapsed:.2f} s<br>"
+                f"Score Bayes : <b>{best_bayes:.4f}</b><br>"
+                f"Score A     : {best_sc_a:.4f}"
+            )
+
+        if not x_pts:
+            continue
+
+        # Connecting line (faint)
+        fig.add_trace(go.Scatter(
+            x          = x_line,
+            y          = y_line,
+            mode       = "lines",
+            line       = dict(color=base_color, width=1.2),
+            opacity    = 0.3,
+            showlegend = False,
+            hoverinfo  = "skip",
+            legendgroup = f"V{vehicle.vehicle_id}",
+        ))
+
+        # Detection points coloured by confidence
+        fig.add_trace(go.Scatter(
+            x    = x_pts,
+            y    = y_pts,
+            mode = "markers",
+            marker = dict(
+                color   = pt_colors,
+                size    = pt_sizes,
+                line    = dict(color=base_color, width=1.2),
+                symbol  = "circle",
+            ),
+            text          = pt_hover,
+            hovertemplate = "%{text}<extra></extra>",
+            name          = (f"V{vehicle.vehicle_id}  "
+                             f"{vehicle.v_est*3.6:.0f} km/h  "
+                             f"entry={_to_ts(vehicle.entry_ts)}"),
+            legendgroup   = f"V{vehicle.vehicle_id}",
+            showlegend    = True,
+        ))
+
+    # ── Layout ────────────────────────────────────────────────────────────
+    fig.update_layout(
+        title = dict(
+            text  = ("Vehicle Progression Through Sensors<br>"
+                     "<sup>Point opacity = Score Bayes confidence  |  "
+                     "Point size = confidence  |  "
+                     "Gaps = below threshold</sup>"),
+            x     = 0.5,
+            font  = dict(size=16, family="Arial"),
+        ),
+        xaxis = dict(
+            tickmode     = "array",
+            tickvals     = x_indices,
+            ticktext     = x_tick_labels,
+            tickangle    = -60,
+            tickfont     = dict(size=9),
+            title        = dict(text="Sensor Position (m)", font=dict(size=12)),
+            showgrid     = True,
+            gridcolor    = "rgba(200,200,200,0.4)",
+            gridwidth    = 1,
+            showline     = True,
+            linecolor    = "grey",
+            rangeslider  = dict(visible=True, thickness=0.04),
+        ),
+        yaxis = dict(
+            title     = dict(
+                text  = "Time Since First Detection (seconds)",
+                font  = dict(size=12)
+            ),
+            showgrid    = True,
+            gridcolor   = "rgba(200,200,200,0.4)",
+            gridwidth   = 1,
+            zeroline    = True,
+            zerolinecolor = "rgba(100,100,100,0.6)",
+            zerolinewidth = 1.5,
+            showline    = True,
+            linecolor   = "grey",
+        ),
+        legend = dict(
+            title      = dict(text="Vehicles", font=dict(size=11)),
+            font       = dict(size=10),
+            itemclick  = "toggle",
+            bgcolor    = "rgba(255,255,255,0.85)",
+            bordercolor = "lightgrey",
+            borderwidth = 1,
+        ),
+        hovermode    = "closest",
+        plot_bgcolor = "white",
+        paper_bgcolor = "white",
+        width        = 1800,
+        height       = max(650, len(vehicles) * 35 + 250),
+        margin       = dict(l=80, r=40, t=100, b=160),
+    )
+
+    # ── Save ──────────────────────────────────────────────────────────────
+    out_html = os.path.join(output_dir, "viz_progression.html")
+    out_png  = os.path.join(output_dir, "viz_progression.png")
+
+    fig.write_html(out_html, include_plotlyjs="cdn")
+    print(f"[VIZ-PROG] Saved interactive: {out_html}")
+
+    try:
+        fig.write_image(out_png, scale=2)
+        print(f"[VIZ-PROG] Saved static:      {out_png}")
+    except Exception as e:
+        print(f"[VIZ-PROG] Static PNG skipped ({e})  "
+              f"→ install kaleido: pip install kaleido")
+
+    fig.show()
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    sensor_positions = load_sensor_positions()
+    import argparse, os
+    parser = argparse.ArgumentParser(description="Bridge vehicle tracker")
+    parser.add_argument(
+        "--output-dir", "-o",
+        default="output",
+        help="Directory to save visualisation PNG files (default: output/)"
+    )
+    args = parser.parse_args()
+    os.makedirs(args.output_dir, exist_ok=True)
+    print(f"[OUTPUT] Visualisations will be saved to: {args.output_dir}/")
+
+    sensor_positions = load_sensor_positions(limit=2)
     vehicles         = load_wim_entries()
     sensor_events    = load_sensor_events()
 
-    vehicles = run_tracker(sensor_positions, sensor_events, vehicles)
-    # summarise(vehicles)
+    sensor_positions_all = load_sensor_positions(limit=None)
 
-    event_timeline_with_probabilities(sensor_positions, sensor_events, vehicles)
+    # Swap function name to switch scoring method:
+    #   _build_sensor_data           — baseline WIM only
+    #   _build_sensor_data_propagated — Bayesian propagation
+    #   _build_sensor_data_dual      — Score A + Score B + Score Bayes
+    sensor_data = _build_sensor_data(sensor_positions_all, sensor_events, vehicles)
 
-    # Build shared score data once — used by all visualisations
-    sensor_data = _build_sensor_data(sensor_positions, sensor_events, vehicles)
+#     viz_vehicle_progression(
+#     sensor_data      = sensor_data,
+#     vehicles         = vehicles,
+#     sensor_positions = sensor_positions_all,
+#     output_dir       = args.output_dir,
+# )
 
-    viz_heatmap(sensor_data, vehicles)
-    viz_swimlane(sensor_data, sensor_positions, vehicles)
-    viz_gaussian_curves(sensor_data, vehicles)
-    viz_ownership_table(sensor_data, vehicles)
+    viz_heatmap(sensor_data, vehicles, output_dir=args.output_dir)
+    viz_gaussian_curves(sensor_data, vehicles, output_dir=args.output_dir)
+    viz_ownership_table(sensor_data, vehicles, output_dir=args.output_dir)

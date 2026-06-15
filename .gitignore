@@ -31,3 +31,10 @@ src/research/timestamps_collection.csv
 src/research/scripts/res.csv
 
 src/research/scripts/graphs
+
+/home/thomas/industry_time_series/src/shared/config.py
+
+*.csv
+*.png
+*.json
+*.html
