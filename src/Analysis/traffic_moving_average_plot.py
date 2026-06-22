@@ -224,12 +224,14 @@ def plot_multiple_time_windows(df, target_date, time_windows=[30, 60, 120], save
 def main():
     parser = argparse.ArgumentParser(description="moving average plots for a given day")
     parser.add_argument('--path', type=str, required=True, help="Path to file")
-    parser.add_argument('--date', type=str, required=True, help="target date")
+    parser.add_argument('--date', type=str, required=True, help="target date (DD/MM/YYYY)")
+    parser.add_argument('--output_dir', type=str, required=True, help="output directory")
     args = parser.parse_args()
 
     file_path = args.path
     target_date = args.date
-
+    output_dir = args.output_dir
+    
     """Main function to run the analysis"""
     print("="*60)
     print("VEHICLE TRANSIT MOVING AVERAGE ANALYSIS")
@@ -283,7 +285,7 @@ def main():
         df, 
         target_date, 
         time_window_minutes=time_window_minutes,
-        save_path=f'graphs/transit_ma_{target_date.replace("/", "_")}_{time_window_minutes}min.png'
+        save_path=f'{output_dir}/transit_ma_{target_date.replace("/", "_")}_{time_window_minutes}min.png'
     )
     
     # Plot comparison with multiple time windows
@@ -291,8 +293,8 @@ def main():
     plot_multiple_time_windows(
         df,
         target_date,
-        time_windows=[30, 60, 120],  # Compare 30min, 60min, and 120min windows
-        save_path=f'graphs/transit_ma_comparison_{target_date.replace("/", "_")}.png'
+        time_windows=[30, 60],  # Compare 30min, 60min, and 120min windows
+        save_path=f'{output_dir}/transit_ma_comparison_{target_date.replace("/", "_")}.png'
     )
     
     # Interactive mode
@@ -307,12 +309,17 @@ def main():
         
         try:
             time_window = int(user_window)
-            plot_moving_average_for_day(df, user_date, time_window_minutes=time_window)
+            plot_moving_average_for_day(df, user_date, time_window_minutes=time_window, save_path=f'{output_dir}/transit_ma_{user_date.replace("/", "_")}_{time_window}min.png')
         except ValueError:
             print("Invalid time window. Using default 60 minutes.")
-            plot_moving_average_for_day(df, user_date, time_window_minutes=60)
+            plot_moving_average_for_day(df, user_date, time_window_minutes=60, save_path=f'{output_dir}/transit_ma_{user_date.replace("/", "_")}_{60}min.png')
     
     print("\n✓ Analysis complete!")
 
 if __name__ == "__main__":
     main()
+
+
+'ex. python3 traffic_moving_average_plot.py --path /Users/thomas/Data/7_AID webcam data/Marzo/transiti.xlsx --date 01/03/2025 --output_dir /Users/thomas/Data/7_AID webcam data/Marzo/graphs'
+
+'rsync -r 192.168.0.42:/home/thomas/graphs/traffic/ traffic/'

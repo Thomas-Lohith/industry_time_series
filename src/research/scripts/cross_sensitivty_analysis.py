@@ -13,7 +13,7 @@ from src.shared.config import position_csv, threshold_csv, delimiter
 
 def find_csv_file(root_folder, date_str, hour):
     formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
-    csv_folder = os.path.join(root_folder, date_str, "csv_acc")
+    csv_folder = os.path.join(root_folder, date_str, date_str, "csv_acc")
     for fname in os.listdir(csv_folder):
         if (fname.startswith(f"M001_{formatted_date}_{hour:02d}-00-00_")
                 and f"_int-{hour+1}_" in fname and fname.endswith("_th.csv")):
@@ -73,6 +73,7 @@ def process_vehicle_event(vehicle_id, timestamp_str, root_folder, boundary_senso
     print(f"\n{'='*60}\nProcessing {vehicle_id}: {timestamp_str}\n{'='*60}")
 
     original_time = pd.to_datetime(timestamp_str, dayfirst=TRUE)
+    print(f"Original: {original_time}")
     adjusted_time = original_time + timedelta(minutes=time_offset_minutes)
     print(f"Original: {original_time} → Adjusted: {adjusted_time} (+{time_offset_minutes} min)")
 
@@ -80,7 +81,8 @@ def process_vehicle_event(vehicle_id, timestamp_str, root_folder, boundary_senso
     print(f"Found: {csv_path}")
 
     df_full = pl.read_csv(csv_path, separator=';')
-    adjusted_time = pd.to_datetime(adjusted_time, format='%Y/%d/%m %H:%M:%S')
+    adjusted_time = pd.to_datetime(adjusted_time, format='%Y/%m/%d %H:%M:%S')
+    print(f"Adjusted: {adjusted_time}")
 
     df_window = get_only_interested_duration(df_full, boundary_sensors, 'time', adjusted_time, duration_minutes)
     for sensor in boundary_sensors:
@@ -120,7 +122,7 @@ def main():
     if 'StartTimeStr' not in vehicles_df.columns:
         raise ValueError("Input CSV must have 'StartTimeStr' column")
 
-    vehicles_df = vehicles_df.drop_duplicates(subset=['StartTimeStr'], keep='first')
+    vehicles_df = (vehicles_df.sort_values('GrossWeight', ascending=False).drop_duplicates(subset=['StartTimeStr'], keep='first'))
     print(f"Processing {len(vehicles_df)} unique vehicle events")
 
     all_results = []
@@ -144,3 +146,4 @@ def main():
 if __name__ == "__main__":
     main()
     #ex: python3 cross_sensitivity_analysis.py --input timestamps_collection.csv --output res.csv --root_folder /Users/thomas/Data/Data_sensors
+    #python3 cross_sensitivty_analysis.py --input ../csv/timestamps_18_03_2025_30-45min.csv --output ../csv/res_18_03_2025_30-45min.csv --root_folder /home/thomas/backup-sensor-data
