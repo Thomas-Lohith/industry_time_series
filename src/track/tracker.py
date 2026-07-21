@@ -2,17 +2,19 @@
 Bridge Vehicle Tracker — end-to-end implementation of tracker_design.md
 Timestamp-only multi-target tracking: gating -> seeding -> MHT -> JPDA.
 
-Run:  python tracker.py <detections.csv> [ground_truth.csv]
+Run:  python tracker.py <detections.csv> [--gt <ground_truth.csv>] [--outdir DIR]
 
 All PROVISIONAL parameters are in the CONFIG block. Values that are model
 constants (from the spec) are marked accordingly. This first version aims to
 RUN and produce inspectable output; it is not yet tuned.
 """
 
+import os
 import sys
 import ast
 import json
 import math
+import argparse
 import itertools
 from dataclasses import dataclass, field
 
@@ -435,55 +437,158 @@ def enumerate_cluster(cl_dids, claim, w, tracks, did_x, det):
 # ============================================================
 # SCORING (scorer-only; hard projection derived here)
 # ============================================================
-def score(tracks, soft, det, gt_path):
-    gt = pd.read_csv(gt_path)
-    # true detection -> vehicle map
-    true_map = {}
-    for _, row in gt.iterrows():
-        for e in ast.literal_eval(row["caused_detection_ids"]):
-            true_map.setdefault(e, []).append(int(row["vehicle_id"]))
-    eid = det.set_index("did")["event_id"].to_dict()
+# def _match_tracks_to_vehicles(tracks, det, gt):
+#     """Greedy match: each track -> the true vehicle it shares most detections
+#     with. Returns {track_idx: vehicle_id or None}. This matching choice affects
+#     every downstream metric and is a modelling decision, not ground truth."""
+#     eid = det.set_index("did")["event_id"].to_dict()
+#     # true event -> vehicle(s)
+#     true_map = {}
+#     for _, row in gt.iterrows():
+#         for e in ast.literal_eval(row["caused_detection_ids"]):
+#             true_map.setdefault(e, []).append(int(row["vehicle_id"]))
+#     match = {}
+#     for ti, t in enumerate(tracks):
+#         counts = {}
+#         for d in t.dids:
+#             for v in true_map.get(eid[d], []):
+#                 counts[v] = counts.get(v, 0) + 1
+#         match[ti] = max(counts, key=counts.get) if counts else None
+#     return match, true_map
 
-    # hard projection: each detection -> argmax track
-    hard = {}
-    for d, dist in soft.items():
-        if not dist:
-            continue
-        best = max(dist, key=dist.get)
-        hard[d] = best
 
-    n_tracks = len(tracks)
-    n_true = len(gt)
-    print(f"\n=== RESULTS ===")
-    print(f"true vehicles: {n_true}   estimated tracks: {n_tracks}")
+# def compute_metrics(tracks, soft, det, gt):
+#     """Compute performance metrics. Returns a dict; prints a readable report.
+#     MPS = metres/second, KMH = km/h (= m/s * 3.6)."""
+#     eid = det.set_index("did")["event_id"].to_dict()
+#     match, true_map = _match_tracks_to_vehicles(tracks, det, gt)
 
-    # track speed comparison (greedy match by speed)
-    est_speeds = sorted([t.u for t in tracks])
-    true_speeds = sorted(gt["speed"].tolist())
-    print(f"\ntrue speeds (sorted):  {[round(s,1) for s in true_speeds]}")
-    print(f"est  speeds (sorted):  {[round(s,1) for s in est_speeds]}")
+#     n_true = len(gt)
+#     n_est = len(tracks)
 
-    # detection assignment precision/recall (loose: did the track set cover truth)
-    covered = 0
-    total_true_det = 0
-    for _, row in gt.iterrows():
-        tdids = set(ast.literal_eval(row["caused_detection_ids"]))
-        total_true_det += len(tdids)
-    print(f"\ntotal true detection-memberships: {total_true_det}")
-    print(f"detections with a soft assignment: {len(soft)}")
+#     # ---- 1. count ----
+#     count_err = n_est - n_true
+
+#     # ---- 2. detection precision / recall / F1 (via matched vehicle) ----
+#     true_by_vehicle = {int(r["vehicle_id"]): set(ast.literal_eval(r["caused_detection_ids"]))
+#                        for _, r in gt.iterrows()}
+#     tp = fp = 0
+#     total_true_memberships = sum(len(s) for s in true_by_vehicle.values())
+#     matched_recall_hits = 0
+#     for ti, t in enumerate(tracks):
+#         v = match[ti]
+#         claimed = set(eid[d] for d in t.dids)
+#         if v is None:
+#             fp += len(claimed)
+#             continue
+#         truth = true_by_vehicle.get(v, set())
+#         tp += len(claimed & truth)
+#         fp += len(claimed - truth)
+#     # recall: of all true memberships, how many captured by the track matched to
+#     # that vehicle
+#     veh_to_track = {}
+#     for ti, v in match.items():
+#         if v is not None:
+#             veh_to_track.setdefault(v, []).append(ti)
+#     for v, truth in true_by_vehicle.items():
+#         captured = set()
+#         for ti in veh_to_track.get(v, []):
+#             captured |= set(eid[d] for d in tracks[ti].dids)
+#         matched_recall_hits += len(truth & captured)
+#     precision = tp / (tp + fp) if (tp + fp) else 0.0
+#     recall = matched_recall_hits / total_true_memberships if total_true_memberships else 0.0
+#     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+
+#     # ---- 3. speed & entry-time error (matched pairs only) ----
+#     speed_abs_err = []       # m/s
+#     for ti, t in enumerate(tracks):
+#         v = match[ti]
+#         if v is None:
+#             continue
+#         true_u = float(gt.loc[gt["vehicle_id"] == v, "speed"].iloc[0])
+#         speed_abs_err.append(abs(t.u - true_u))
+#     speed_mae = float(np.mean(speed_abs_err)) if speed_abs_err else float("nan")
+#     speed_rmse = float(np.sqrt(np.mean(np.square(speed_abs_err)))) if speed_abs_err else float("nan")
+
+#     # ---- 4. vehicles found / missed / spurious ----
+#     vehicles_found = len(set(v for v in match.values() if v is not None))
+#     vehicles_missed = n_true - vehicles_found
+#     spurious_tracks = sum(1 for v in match.values() if v is None)
+#     # duplicate tracks: >1 track matched to same vehicle
+#     duplicate_tracks = sum(len(v) - 1 for v in veh_to_track.values() if len(v) > 1)
+
+#     metrics = dict(
+#         n_true=n_true, n_est=n_est, count_err=count_err,
+#         precision=precision, recall=recall, f1=f1,
+#         speed_mae_mps=speed_mae, speed_mae_kmh=speed_mae * 3.6,
+#         speed_rmse_mps=speed_rmse, speed_rmse_kmh=speed_rmse * 3.6,
+#         vehicles_found=vehicles_found, vehicles_missed=vehicles_missed,
+#         spurious_tracks=spurious_tracks, duplicate_tracks=duplicate_tracks,
+#     )
+
+#     # ---- report ----
+#     print("\n=== METRICS ===")
+#     print(f"  NOTE: metrics use greedy track->vehicle matching by detection "
+#           f"overlap; a different matching rule would shift these numbers.")
+#     print(f"  vehicles (true / estimated):   {n_true} / {n_est}   "
+#           f"(count error {count_err:+d})")
+#     print(f"  vehicles found / missed:       {vehicles_found} / {vehicles_missed}")
+#     print(f"  spurious tracks (no vehicle):  {spurious_tracks}")
+#     print(f"  duplicate tracks (same veh):   {duplicate_tracks}")
+#     print(f"  detection precision:           {precision:.3f}")
+#     print(f"  detection recall:              {recall:.3f}")
+#     print(f"  detection F1:                  {f1:.3f}")
+#     print(f"  speed MAE:                     {speed_mae:.2f} m/s  "
+#           f"({speed_mae*3.6:.2f} km/h)")
+#     print(f"  speed RMSE:                    {speed_rmse:.2f} m/s  "
+#           f"({speed_rmse*3.6:.2f} km/h)")
+#     return metrics
+
+
+# def score(tracks, soft, det, gt_path):
+#     gt = pd.read_csv(gt_path)
+
+#     n_tracks = len(tracks)
+#     n_true = len(gt)
+#     print(f"\n=== RESULTS ===")
+#     print(f"true vehicles: {n_true}   estimated tracks: {n_tracks}")
+
+#     # speed comparison, printed cleanly in km/h (plain floats, not np.float64)
+#     est_kmh = sorted(round(float(t.u) * 3.6, 1) for t in tracks)
+#     true_kmh = sorted(round(float(s) * 3.6, 1) for s in gt["speed"].tolist())
+#     print(f"\ntrue speeds km/h (sorted):  {true_kmh}")
+#     print(f"est  speeds km/h (sorted):  {est_kmh}")
+
+#     # full metrics
+#     compute_metrics(tracks, soft, det, gt)
 
 
 # ============================================================
 # MAIN
 # ============================================================
-def main():
-    if len(sys.argv) < 2:
-        print("usage: python tracker.py <detections.csv> [ground_truth.csv]")
-        return
-    det_path = sys.argv[1]
-    gt_path = sys.argv[2] if len(sys.argv) > 2 else None
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Bridge vehicle tracker — timestamp-only multi-target "
+                    "tracking (gating -> seeding -> extension -> JPDA).")
+    p.add_argument("--detections",
+                   help="path to the detections CSV (required)")
+    p.add_argument("--gt", "--ground-truth", dest="gt", default=None,
+                   help="optional ground-truth CSV (used only for scoring)")
+    p.add_argument("--outdir", default=".",
+                   help="directory for any output files (default: current)")
+    return p.parse_args()
 
-    det = load_detections([det_path])
+
+def main():
+    args = parse_args()
+
+    if not os.path.isfile(args.detections):
+        sys.exit(f"detections file not found: {args.detections}")
+    if args.gt and not os.path.isfile(args.gt):
+        sys.exit(f"ground-truth file not found: {args.gt}")
+    os.makedirs(args.outdir, exist_ok=True)
+
+    det = load_detections([args.detections])
     positions, pos_index, colocated = build_geometry(det)
     pos_times = per_position_times(det, positions)
 
@@ -500,8 +605,8 @@ def main():
     print(f"JPDA: {len(clusters)} contested clusters, "
           f"{len(soft)} detections with soft assignments")
 
-    if gt_path:
-        score(tracks, soft, det, gt_path)
+    if args.gt:
+        score(tracks, soft, det, args.gt)
 
 
 if __name__ == "__main__":

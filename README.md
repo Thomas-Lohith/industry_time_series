@@ -2,7 +2,7 @@
 
 A comprehensive Python-based repository for analyzing bridge vibration data and correlating it with traffic patterns. This project combines accelerometer sensor data processing with vehicle transit analysis to assess bridge structural health and dynamic loading patterns.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Features](#features)
@@ -13,7 +13,7 @@ A comprehensive Python-based repository for analyzing bridge vibration data and 
 - [Analysis Workflows](#analysis-workflows)
 - [Contributing](#contributing)
 
-## 🎯 Overview
+##  Overview
 
 This repository provides tools for:
 - **Vibration Analysis**: Processing accelerometer data from 106 bridge-mounted sensors
@@ -22,7 +22,7 @@ This repository provides tools for:
 - **Frequency Domain Analysis**: Spectrograms, FFT, and power spectral density (PSD) computations
 - **Data Filtering**: Threshold-based event detection and DC component removal
 
-## ✨ Features
+##  Features
 
 ### Vibration Data Processing
 - Multi-sensor time-series visualization
@@ -47,7 +47,7 @@ This repository provides tools for:
 - Cross-validation between multiple data sources
 - Automated threshold computation
 
-## 🔧 Installation
+##  Installation
 
 ### Prerequisites
 
@@ -67,7 +67,7 @@ pip install psutil argparse openpyxl pyarrow
 pip install jupyter  # For notebook examples
 ```
 
-## 📊 Data Sources
+##  Data Sources
 
 The repository works with three primary data types:
 
@@ -87,7 +87,7 @@ The repository works with three primary data types:
    - Axle configurations and spacing
    - Speed and gross weight estimates
 
-## 🚀 Usage
+##  Usage
 
 ### Quick Start Examples
 
@@ -136,7 +136,7 @@ python3 filtering_script_v5.py \
   --sensor "0309101E_x"
 ```
 
-## 📚 Scripts Documentation
+##  Scripts Documentation
 
 ### Core Analysis Scripts
 
@@ -348,7 +348,7 @@ Generate publication-ready graphs for conference presentations.
 
 ---
 
-## 🔄 Analysis Workflows
+##  Analysis Workflows
 
 ### Workflow 1: Correlate Traffic with Vibrations
 
@@ -408,7 +408,7 @@ python3 frequency_reduction.py \
 # Use reduced data for monthly/yearly comparisons
 ```
 
-## 📁 Project Structure
+##  Project Structure
 
 ```bash
 ├── analysis
@@ -466,7 +466,7 @@ python3 frequency_reduction.py \
     └── sensor_map.py
 ```
 
-## 🔬 Sensor Configuration
+##  Sensor Configuration
 
 The bridge has **106 accelerometer sensors** distributed across multiple spans:
 
@@ -479,7 +479,7 @@ Each sensor measures:
 - **Y-axis**: Flexural direction (lateral movement)
 - **Z-axis**: Torsional direction (rotational effects)
 
-## 📊 Key Analysis Parameters
+##  Key Analysis Parameters
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
@@ -489,7 +489,7 @@ Each sensor measures:
 | Spectrogram Window | 256-2048 | FFT window size (nperseg) |
 | Heavy Vehicles | Trucks + Buses | Primary structural load contributors |
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Areas for improvement:
 
@@ -500,7 +500,7 @@ Contributions are welcome! Areas for improvement:
 - [ ] Modal analysis for natural frequencies
 - [ ] Damage detection algorithms
 
-## 📝 Citation
+##  Citation
 
 If you use this code in your research, please cite:
 
@@ -510,20 +510,20 @@ University of Pavia Industrial PhD Program
 2025
 ```
 
-## 📧 Contact
+##  Contact
 
 For questions or collaboration:
 - Open an issue on GitHub
 - Contact the research team at [university email]
 
-## ⚠️ Important Notes
+##  Important Notes
 
 1. **Data Format**: Ensure CSV files use semicolon (`;`) as delimiter
 2. **Time Format**: Use `YYYY/MM/DD HH:MM:SS:fff` for timestamps
 3. **Memory**: Large files (>1GB) should use Polars-based scripts
 4. **Sensor Names**: Must match exactly (case-sensitive)
 
-## 🔍 Troubleshooting
+##  Troubleshooting
 
 **Issue**: `KeyError: 'time'`
 - **Solution**: Check that time column exists and matches expected format

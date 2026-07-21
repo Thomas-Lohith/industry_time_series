@@ -254,6 +254,71 @@ def get_only_interested_duration(df, sensor_columns, time_column, start_time, du
     return sampled_df
 
 # ============================================================================
+# AMPLITUDE-BAND (DEADBAND) FILTER
+# ============================================================================
+
+def filter_between_values(
+    df: pd.DataFrame,
+    sensor_columns: "str | list[str]",
+    lower_bound: float,
+    upper_bound: float,
+    invert: bool = False,
+) -> pd.DataFrame:
+    """
+    Zero out the part of each sensor signal whose amplitude lies BETWEEN
+    two values (a deadband around the baseline).
+
+    By default any sample with lower_bound < value < upper_bound is set to 0,
+    keeping only the larger excursions. Set invert=True to do the opposite
+    (keep what is inside the band, zero everything outside it).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data containing the sensor column(s).
+    sensor_columns : str | list[str]
+        One sensor ID or a list of sensor IDs to filter.
+    lower_bound, upper_bound : float
+        The band edges. Samples strictly inside (lower, upper) are zeroed
+        by default.
+    invert : bool
+        If True, zero samples OUTSIDE the band instead of inside it.
+
+    Returns
+    -------
+    pd.DataFrame
+        A copy of df with the selected sensor columns modified.
+    """
+    if isinstance(sensor_columns, str):
+        sensor_columns = [sensor_columns]
+
+    if lower_bound > upper_bound:
+        lower_bound, upper_bound = upper_bound, lower_bound
+
+    result_df = df.copy()
+
+    for col in sensor_columns:
+        if col not in result_df.columns:
+            raise ValueError(f"Sensor '{col}' not found in data.")
+
+        vals = result_df[col].to_numpy(dtype=float)
+        inside = (vals > lower_bound) & (vals < upper_bound)
+        mask = ~inside if invert else inside  # True => zero this sample
+
+        zeroed = vals.copy()
+        zeroed[mask] = 0.0
+        result_df[col] = zeroed
+
+        frac = mask.sum() / len(mask) if len(mask) else 0.0
+        # print(f"[BANDFILTER] {col}: zeroed {mask.sum()} samples "
+        #       f"({frac:.1%}) "
+        #       f"{'outside' if invert else 'inside'} "
+        #       f"band ({lower_bound}, {upper_bound})")
+
+    return result_df
+
+
+# ============================================================================
 # PEAK DETECTION
 # ============================================================================
  
@@ -336,8 +401,8 @@ def find_sensor_peaks(
             ))
  
         results[sensor_id] = events
-        print(f"[PEAKS] {sensor_id}: {len(events)} event(s) "
-              f"(threshold={threshold}, sample_period={sample_period})")
+        # print(f"[PEAKS] {sensor_id}: {len(events)} event(s) "
+        #       f"(threshold={threshold}, sample_period={sample_period})")
  
     return results
 
@@ -468,6 +533,92 @@ def visualize_sensor_histograms(df, sensor_columns, bins=50):
     
     print("Sensor histograms saved to sensor_histograms.png")
     memory_usage()
+
+
+def visualize_amplitude_histogram(df, sensor_id, bins=30,
+                                  log_scale=True, save_path='/home/thomas/industry_time_series/src/results'):
+    """
+    Plot the amplitude distribution of a SINGLE sensor to inspect its
+    vibration amplitude characteristics (spread, tails, outliers).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data containing the sensor column (ideally DC-removed).
+    sensor_id : str
+        The single sensor ID to plot.
+    bins : int
+        Number of histogram bins.
+    log_scale : bool
+        If True, use a log y-axis so low-frequency large-amplitude
+        events (the interesting ones) remain visible.
+    save_path : str | None
+        If given, the figure is written there.
+    """
+    print(f"Creating amplitude histogram for sensor '{sensor_id}'...")
+    memory_usage()
+
+    if sensor_id not in df.columns:
+        raise ValueError(f"Sensor '{sensor_id}' not found in data. "
+                         f"Available columns: {list(df.columns)}")
+
+    vals = pd.Series(df[sensor_id]).to_numpy(dtype=float)
+    vals = vals[~np.isnan(vals)]
+
+    if vals.size == 0:
+        print(f"No valid data for sensor '{sensor_id}'.")
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    counts, edges, _ = ax.hist(vals, bins=bins, alpha=0.7, color="steelblue",
+                               edgecolor="black", linewidth=0.3)
+
+    # ── Report bins whose count exceeds 100 ──────────────────────────────────
+    threshold_count = 30
+    high_bins = np.where(counts > threshold_count)[0]
+    print(f"\nBins with count > {threshold_count} for sensor '{sensor_id}':")
+    if high_bins.size == 0:
+        print("  (none)")
+    else:
+        for b in high_bins:
+            print(f"  [{edges[b]:.4e}, {edges[b + 1]:.4e})  count={int(counts[b])}")
+
+    # Reference statistics — computed from the data, not assumed
+    mean_v = float(np.mean(vals))
+    std_v  = float(np.std(vals))
+    rms_v  = float(np.sqrt(np.mean(vals ** 2)))
+    pk_v   = float(np.max(np.abs(vals)))
+
+    ax.axvline(mean_v, color="red", linestyle="--", linewidth=1.0,
+               label=f"mean={mean_v:.2e}")
+    ax.axvline(mean_v + 2 * std_v, color="orange", linestyle=":",
+               linewidth=1.0, label="±2σ")
+    ax.axvline(mean_v - 2 * std_v, color="orange", linestyle=":",
+               linewidth=1.0)
+
+    if log_scale:
+        ax.set_yscale("log")
+
+    ax.set_title(f"Amplitude Distribution – {sensor_id}\n"
+                 f"RMS={rms_v:.2e}   peak={pk_v:.2e}",
+                 fontsize=12, fontweight="bold")
+    ax.set_xlabel("Acceleration amplitude", fontsize=10)
+    ax.set_ylabel("Count (log)" if log_scale else "Count", fontsize=10)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True) \
+            if os.path.dirname(save_path) else None
+        fig.savefig(save_path, dpi=120, bbox_inches="tight")
+        print(f"Amplitude histogram saved to: {save_path}")
+
+    plt.show()
+    memory_usage()
+
 
 def waterfall_3d_plot(df, sensor_columns, time_column, fs=100, downsample_step=2,
                       save_path='waterfall_3d.png'):
@@ -671,12 +822,16 @@ def main():
     parser.add_argument('--start_time',    type=str, required=True, help='Starting time frame of interest (YYYY/MM/DD HH:MM:SS)')
     parser.add_argument('--duration_mins', type=float, required=True, help='Duration in minutes of time frame of interest')
     parser.add_argument('--sensor',        type=str, default=None,  help='Sensor ID(s) to analyze (comma-separated for multiple)')
+    parser.add_argument('--band_low',      type=float, default=-0.00023, help='Lower bound of the amplitude band to zero out (default: -0.00018)')
+    parser.add_argument('--band_high',     type=float, default=0.00023,  help='Upper bound of the amplitude band to zero out (default: 0.00018)')
 
     args = parser.parse_args()
     root_folder   = args.root_folder
     start_time    = args.start_time
     duration_mins = args.duration_mins
     sensor_arg    = args.sensor
+    band_low      = args.band_low
+    band_high     = args.band_high
 
     sample_period = 500
 
@@ -718,6 +873,14 @@ def main():
     # ── Process ───────────────────────────────────────────────────────────────
     no_dc_df   = filter_dc_by_mean(df, sensor_columns)
     sampled_df = get_only_interested_duration(no_dc_df, sensor_columns, time_column, start_time, duration_mins)
+    visualize_amplitude_histogram(sampled_df, sensor_columns[0])
+
+    # ── Zero out samples whose amplitude lies inside the band ────────────────
+    sampled_df = filter_between_values(sampled_df, sensor_columns, band_low, band_high)
+
+    # ── Inspect amplitude distribution (single sensor) ──────────────────────
+    #visualize_amplitude_histogram(sampled_df, sensor_columns[0])
+
     peak_data  = find_sensor_peaks(sampled_df, sensor_columns, time_column, sensor_thresholds, sample_period)
 
     visualize_overlay(sampled_df, sensor_columns, time_column, peak_data)

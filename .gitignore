@@ -32,9 +32,11 @@ src/research/scripts/res.csv
 
 src/research/scripts/graphs
 
-/home/thomas/industry_time_series/src/shared/config.py
+src/shared/config.py
+src/track/concept_cont.md
 
 *.csv
 *.png
 *.json
 *.html
+*.yaml
