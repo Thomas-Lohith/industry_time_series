@@ -571,7 +571,7 @@ def parse_args():
         description="Bridge vehicle tracker — timestamp-only multi-target "
                     "tracking (gating -> seeding -> extension -> JPDA).")
     p.add_argument("--detections",
-                   help="path to the detections CSV (required)")
+               required =True, help="path to the detections CSV (required)")
     p.add_argument("--gt", "--ground-truth", dest="gt", default=None,
                    help="optional ground-truth CSV (used only for scoring)")
     p.add_argument("--outdir", default=".",
