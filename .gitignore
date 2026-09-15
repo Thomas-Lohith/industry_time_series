@@ -24,11 +24,15 @@ src/shared/__pycache__
 src/research/bridge_export.json
 
 src/filtering/.DS_Store
-src/research/timestamps_collection.csv
+#src/research/timestamps_collection.csv
+.DS_Store
+*.__pycache__
+*.pyc
+*.ipynb_checkpoints
+*.pyc*
 
 
-
-src/research/scripts/res.csv
+#src/research/scripts/res.csv
 
 src/research/scripts/graphs
 

@@ -79,17 +79,35 @@ def truncated_normal(rng, mean, std, lo, hi):
 
 
 def generate_vehicles(cfg, rng, window_seconds):
-    """Poisson arrivals over the window; each vehicle gets a constant speed."""
+    """Vehicle arrivals over the window; each vehicle gets a constant speed."""
     tr = cfg["traffic"]
-    rate_per_s = tr["arrival"]["rate_veh_per_min"] / 60.0
+    arr = tr["arrival"]
+    process = arr.get("process", "poisson")
+    rate_per_s = arr.get("rate_veh_per_min", 0.0) / 60.0
+    gap_values = arr.get("gap_values_s")
     sp = tr["speed"]
-
+ 
     vehicles = []
     t = 0.0
     v_id = 0
+    gap_idx = 0
     while True:
-        # exponential inter-arrival gap (Poisson process)
-        gap = rng.expovariate(rate_per_s) if rate_per_s > 0 else float("inf")
+        if process == "gap_cycle":
+            if not gap_values:
+                raise ValueError(
+                    "traffic.arrival.gap_values_s must be a non-empty list "
+                    "when traffic.arrival.process is 'gap_cycle'."
+                )
+            gap = gap_values[gap_idx % len(gap_values)]
+            gap_idx += 1
+        elif process == "poisson":
+            # exponential inter-arrival gap (Poisson process)
+            gap = rng.expovariate(rate_per_s) if rate_per_s > 0 else float("inf")
+        else:
+            raise ValueError(
+                f"Unknown traffic.arrival.process: {process!r} "
+                "(expected 'poisson' or 'gap_cycle')."
+            )
         t += gap
         if t >= window_seconds:
             break
@@ -398,7 +416,7 @@ _HTML_TEMPLATE = r"""../traffic_simulation/sim.html"""
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="src/traffic_simulation/traffic_sim_config.yaml")
+    ap.add_argument("--config", default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--viz", choices=["none", "html", "mpl", "both"],
                     default="none",
