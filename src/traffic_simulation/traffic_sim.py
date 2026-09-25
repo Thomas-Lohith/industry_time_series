@@ -416,8 +416,8 @@ _HTML_TEMPLATE = r"""../traffic_simulation/sim.html"""
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default=None)
-    ap.add_argument("--out", default=None)
+    ap.add_argument("--config", required=True, default=None)
+    ap.add_argument("--out", required=True, default=None)
     ap.add_argument("--viz", choices=["none", "html", "mpl", "both"],
                     default="none",
                     help="Generate a detection-stream visualization for each "

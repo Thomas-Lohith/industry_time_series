@@ -14,8 +14,7 @@ from dataclasses import dataclass
 import pandas as pd
 import numpy as np
 import math
-from src.research.scripts.vehicle_speed_est import Config
-from src.track.tracker import CFG
+
 
 
 ##============================================================
@@ -131,7 +130,7 @@ def generate_track_seeds(det, positions, pos_index, pos_times):
                 u_0 = float(np.mean(vs))
                 #here we reject implausible speeds based on statstical prior
                 #keeps with the tolerance mu +/- 4*sigma
-                if abs(u_0 - CONFIG.mu_v) > 4 * CONFIG.sigma_v
+                if abs(u_0 - CONFIG.mu_v) > 4 * CONFIG.sigma_v:
                     continue
 
                 t_0 = t_j - (x_j) / u_0  #lets say entry time referenced to x=0
@@ -240,7 +239,7 @@ def extend_track(track_seed, det, positions, pos_index, pos_times):
 
 def parse_args():
     p = argparse.ArgumentParser(description='multi vehicle tracker- a probablistic multi vehcile tracker')
-    p.add_argument('--detction', help='path to the detctions csv (required)', required=True)
+    p.add_argument('--detection', help='path to the detctions csv (required)', required=True)
     p.add_argument('--ground_truth', help= 'path to the ground trutvh csv file (optional)')
     p.add_argument('--outdir', help='path to output directory')
     return p.parse_args()

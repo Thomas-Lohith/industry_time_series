@@ -31,18 +31,18 @@ class CFG:
     P_D          = 0.95     # per-sensor detection prob
     T_MERGE      = 0.10     # merge window (s) -- R3 trigger
     LAMBDA_FALSE = 0.2      # clutter rate /sensor/min
-    V_MIN        = 5.0      # m/s  physical gate floor
-    V_MAX        = 50.0     # m/s  physical gate ceiling
-    MU_V         = 16.7     # speed prior mean
+    V_MIN        = 12.0      # m/s -->43.2km/hr  physical gate floor
+    V_MAX        = 55.0     # m/s  physical gate ceiling
+    MU_V         = 22.5     # speed prior mean
     SIGMA_V      = 2.0      # speed prior std
 
     # --- PROVISIONAL (tune empirically) ---
     EPSILON_T    = 0.500    # physical-gate time slack (s)  [widened from 50ms]
-    N_NEIGHBOURS = 4        # forward neighbour positions used for seeding
+    N_NEIGHBOURS = 5       # forward neighbour positions used for seeding
     DELTA_V      = 2.0      # seed-cluster tightness (m/s) -- tight, vehicle sep.
-    K_GATE       = 4.0      # statistical-gate width multiplier (k * sigma_t)
+    K_GATE       = 5.0      # statistical-gate width multiplier (k * sigma_t)
     K_PRUNE      = 100.0    # MHT relative pruning constant
-    N_SCAN       = 3        # N-scan commit horizon (positions)
+    N_SCAN       = 5       # N-scan commit horizon (positions)
 
 
 # ============================================================
@@ -52,8 +52,8 @@ def load_detections(paths):
     """Concatenate windows, sort by time, dedup, build per-position index."""
     frames = [pd.read_csv(p) for p in paths]
     det = pd.concat(frames, ignore_index=True)
-    det = det.sort_values("detection_time").reset_index(drop=True)
-    # dedup exact seam duplicates (same event_id appearing twice)
+    #det = det.sort_values("detection_time").reset_index(drop=True)
+    #dedup exact seam duplicates (same event_id appearing twice)
     det = det.drop_duplicates(subset=["event_id"]).reset_index(drop=True)
     det["did"] = np.arange(len(det))           # internal contiguous id
     return det
@@ -102,8 +102,8 @@ def generate_seeds(det, positions, pos_index, pos_times):
     """Filter-then-average seeding over N forward neighbours.
     Returns list of seed dicts: {dids:[...], u0:float, t0:float, x0:float}."""
     seeds = []
-    npos = len(positions)
-    det_t = det.set_index("did")["detection_time"].to_dict()
+    # npos = len(positions)
+    # det_t = det.set_index("did")["detection_time"].to_dict()
 
     for i, x_k in enumerate(positions):
         # downstream detections at this position
@@ -151,9 +151,13 @@ def generate_seeds(det, positions, pos_index, pos_times):
     return seeds
 
 
-def cluster_velocities(cand, delta_v):
+def  cluster_velocities(cand, delta_v):
     """Greedy 1-D clustering by velocity; returns list of clusters (each a list
     of (v,did,x)). A cluster is 'tight' if members are within delta_v."""
+
+    #keep the speed guesses that agree with each other, 
+    # because agreement is evidence they're all really describing the same car 
+    # and throw out or separate the odd one out.
     cand = sorted(cand, key=lambda c: c[0])
     clusters = []
     cur = [cand[0]]
@@ -214,17 +218,10 @@ def speed_prior_loglik(u):
 def extend_track(seed, det, positions, pos_index, pos_times):
     """Grow one seed into ONE track by greedy best-fit attachment with re-fit.
 
-    Design note: the MHT tree must NOT branch on every gated detection -- with a
-    dense, similar-speed vehicle population, many detections fall in each gate at
-    every position, so branch-everything explodes to tens of thousands of live
-    hypotheses that pruning cannot cut (the score gap between the true and a
-    gated-neighbour detection is smaller than log K). That local ambiguity is
-    exactly what JPDA resolves GLOBALLY per contested cluster. So track FORMATION
-    here is bounded: attach the single best-fitting detection (or skip) at each
-    position, re-fitting as we go. Contention between overlapping tracks is left
-    for JPDA. Returns [Node]."""
+     Returns [Node]."""
     did_x = det.set_index("did")["longitudinal_position"].to_dict()
     did_t = det.set_index("did")["detection_time"].to_dict()
+   
 
     pts = [(did_x[d], did_t[d]) for d in seed["dids"]]
     fit = fit_line(pts)
@@ -437,130 +434,130 @@ def enumerate_cluster(cl_dids, claim, w, tracks, did_x, det):
 # ============================================================
 # SCORING (scorer-only; hard projection derived here)
 # ============================================================
-# def _match_tracks_to_vehicles(tracks, det, gt):
-#     """Greedy match: each track -> the true vehicle it shares most detections
-#     with. Returns {track_idx: vehicle_id or None}. This matching choice affects
-#     every downstream metric and is a modelling decision, not ground truth."""
-#     eid = det.set_index("did")["event_id"].to_dict()
-#     # true event -> vehicle(s)
-#     true_map = {}
-#     for _, row in gt.iterrows():
-#         for e in ast.literal_eval(row["caused_detection_ids"]):
-#             true_map.setdefault(e, []).append(int(row["vehicle_id"]))
-#     match = {}
-#     for ti, t in enumerate(tracks):
-#         counts = {}
-#         for d in t.dids:
-#             for v in true_map.get(eid[d], []):
-#                 counts[v] = counts.get(v, 0) + 1
-#         match[ti] = max(counts, key=counts.get) if counts else None
-#     return match, true_map
+def _match_tracks_to_vehicles(tracks, det, gt):
+    """Greedy match: each track -> the true vehicle it shares most detections
+    with. Returns {track_idx: vehicle_id or None}. This matching choice affects
+    every downstream metric and is a modelling decision, not ground truth."""
+    eid = det.set_index("did")["event_id"].to_dict()
+    # true event -> vehicle(s)
+    true_map = {}
+    for _, row in gt.iterrows():
+        for e in ast.literal_eval(row["caused_detection_ids"]):
+            true_map.setdefault(e, []).append(int(row["vehicle_id"]))
+    match = {}
+    for ti, t in enumerate(tracks):
+        counts = {}
+        for d in t.dids:
+            for v in true_map.get(eid[d], []):
+                counts[v] = counts.get(v, 0) + 1
+        match[ti] = max(counts, key=counts.get) if counts else None
+    return match, true_map
 
 
-# def compute_metrics(tracks, soft, det, gt):
-#     """Compute performance metrics. Returns a dict; prints a readable report.
-#     MPS = metres/second, KMH = km/h (= m/s * 3.6)."""
-#     eid = det.set_index("did")["event_id"].to_dict()
-#     match, true_map = _match_tracks_to_vehicles(tracks, det, gt)
+def compute_metrics(tracks, soft, det, gt):
+    """Compute performance metrics. Returns a dict; prints a readable report.
+    MPS = metres/second, KMH = km/h (= m/s * 3.6)."""
+    eid = det.set_index("did")["event_id"].to_dict()
+    match, true_map = _match_tracks_to_vehicles(tracks, det, gt)
 
-#     n_true = len(gt)
-#     n_est = len(tracks)
+    n_true = len(gt)
+    n_est = len(tracks)
 
-#     # ---- 1. count ----
-#     count_err = n_est - n_true
+    # ---- 1. count ----
+    count_err = n_est - n_true
 
-#     # ---- 2. detection precision / recall / F1 (via matched vehicle) ----
-#     true_by_vehicle = {int(r["vehicle_id"]): set(ast.literal_eval(r["caused_detection_ids"]))
-#                        for _, r in gt.iterrows()}
-#     tp = fp = 0
-#     total_true_memberships = sum(len(s) for s in true_by_vehicle.values())
-#     matched_recall_hits = 0
-#     for ti, t in enumerate(tracks):
-#         v = match[ti]
-#         claimed = set(eid[d] for d in t.dids)
-#         if v is None:
-#             fp += len(claimed)
-#             continue
-#         truth = true_by_vehicle.get(v, set())
-#         tp += len(claimed & truth)
-#         fp += len(claimed - truth)
-#     # recall: of all true memberships, how many captured by the track matched to
-#     # that vehicle
-#     veh_to_track = {}
-#     for ti, v in match.items():
-#         if v is not None:
-#             veh_to_track.setdefault(v, []).append(ti)
-#     for v, truth in true_by_vehicle.items():
-#         captured = set()
-#         for ti in veh_to_track.get(v, []):
-#             captured |= set(eid[d] for d in tracks[ti].dids)
-#         matched_recall_hits += len(truth & captured)
-#     precision = tp / (tp + fp) if (tp + fp) else 0.0
-#     recall = matched_recall_hits / total_true_memberships if total_true_memberships else 0.0
-#     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    # ---- 2. detection precision / recall / F1 (via matched vehicle) ----
+    true_by_vehicle = {int(r["vehicle_id"]): set(ast.literal_eval(r["caused_detection_ids"]))
+                       for _, r in gt.iterrows()}
+    tp = fp = 0
+    total_true_memberships = sum(len(s) for s in true_by_vehicle.values())
+    matched_recall_hits = 0
+    for ti, t in enumerate(tracks):
+        v = match[ti]
+        claimed = set(eid[d] for d in t.dids)
+        if v is None:
+            fp += len(claimed)
+            continue
+        truth = true_by_vehicle.get(v, set())
+        tp += len(claimed & truth)
+        fp += len(claimed - truth)
+    # recall: of all true memberships, how many captured by the track matched to
+    # that vehicle
+    veh_to_track = {}
+    for ti, v in match.items():
+        if v is not None:
+            veh_to_track.setdefault(v, []).append(ti)
+    for v, truth in true_by_vehicle.items():
+        captured = set()
+        for ti in veh_to_track.get(v, []):
+            captured |= set(eid[d] for d in tracks[ti].dids)
+        matched_recall_hits += len(truth & captured)
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = matched_recall_hits / total_true_memberships if total_true_memberships else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
 
-#     # ---- 3. speed & entry-time error (matched pairs only) ----
-#     speed_abs_err = []       # m/s
-#     for ti, t in enumerate(tracks):
-#         v = match[ti]
-#         if v is None:
-#             continue
-#         true_u = float(gt.loc[gt["vehicle_id"] == v, "speed"].iloc[0])
-#         speed_abs_err.append(abs(t.u - true_u))
-#     speed_mae = float(np.mean(speed_abs_err)) if speed_abs_err else float("nan")
-#     speed_rmse = float(np.sqrt(np.mean(np.square(speed_abs_err)))) if speed_abs_err else float("nan")
+    # ---- 3. speed & entry-time error (matched pairs only) ----
+    speed_abs_err = []       # m/s
+    for ti, t in enumerate(tracks):
+        v = match[ti]
+        if v is None:
+            continue
+        true_u = float(gt.loc[gt["vehicle_id"] == v, "speed"].iloc[0])
+        speed_abs_err.append(abs(t.u - true_u))
+    speed_mae = float(np.mean(speed_abs_err)) if speed_abs_err else float("nan")
+    speed_rmse = float(np.sqrt(np.mean(np.square(speed_abs_err)))) if speed_abs_err else float("nan")
 
-#     # ---- 4. vehicles found / missed / spurious ----
-#     vehicles_found = len(set(v for v in match.values() if v is not None))
-#     vehicles_missed = n_true - vehicles_found
-#     spurious_tracks = sum(1 for v in match.values() if v is None)
-#     # duplicate tracks: >1 track matched to same vehicle
-#     duplicate_tracks = sum(len(v) - 1 for v in veh_to_track.values() if len(v) > 1)
+    # ---- 4. vehicles found / missed / spurious ----
+    vehicles_found = len(set(v for v in match.values() if v is not None))
+    vehicles_missed = n_true - vehicles_found
+    spurious_tracks = sum(1 for v in match.values() if v is None)
+    # duplicate tracks: >1 track matched to same vehicle
+    duplicate_tracks = sum(len(v) - 1 for v in veh_to_track.values() if len(v) > 1)
 
-#     metrics = dict(
-#         n_true=n_true, n_est=n_est, count_err=count_err,
-#         precision=precision, recall=recall, f1=f1,
-#         speed_mae_mps=speed_mae, speed_mae_kmh=speed_mae * 3.6,
-#         speed_rmse_mps=speed_rmse, speed_rmse_kmh=speed_rmse * 3.6,
-#         vehicles_found=vehicles_found, vehicles_missed=vehicles_missed,
-#         spurious_tracks=spurious_tracks, duplicate_tracks=duplicate_tracks,
-#     )
+    metrics = dict(
+        n_true=n_true, n_est=n_est, count_err=count_err,
+        precision=precision, recall=recall, f1=f1,
+        speed_mae_mps=speed_mae, speed_mae_kmh=speed_mae * 3.6,
+        speed_rmse_mps=speed_rmse, speed_rmse_kmh=speed_rmse * 3.6,
+        vehicles_found=vehicles_found, vehicles_missed=vehicles_missed,
+        spurious_tracks=spurious_tracks, duplicate_tracks=duplicate_tracks,
+    )
 
-#     # ---- report ----
-#     print("\n=== METRICS ===")
-#     print(f"  NOTE: metrics use greedy track->vehicle matching by detection "
-#           f"overlap; a different matching rule would shift these numbers.")
-#     print(f"  vehicles (true / estimated):   {n_true} / {n_est}   "
-#           f"(count error {count_err:+d})")
-#     print(f"  vehicles found / missed:       {vehicles_found} / {vehicles_missed}")
-#     print(f"  spurious tracks (no vehicle):  {spurious_tracks}")
-#     print(f"  duplicate tracks (same veh):   {duplicate_tracks}")
-#     print(f"  detection precision:           {precision:.3f}")
-#     print(f"  detection recall:              {recall:.3f}")
-#     print(f"  detection F1:                  {f1:.3f}")
-#     print(f"  speed MAE:                     {speed_mae:.2f} m/s  "
-#           f"({speed_mae*3.6:.2f} km/h)")
-#     print(f"  speed RMSE:                    {speed_rmse:.2f} m/s  "
-#           f"({speed_rmse*3.6:.2f} km/h)")
-#     return metrics
+    # ---- report ----
+    print("\n=== METRICS ===")
+    print(f"  NOTE: metrics use greedy track->vehicle matching by detection "
+          f"overlap; a different matching rule would shift these numbers.")
+    print(f"  vehicles (true / estimated):   {n_true} / {n_est}   "
+          f"(count error {count_err:+d})")
+    print(f"  vehicles found / missed:       {vehicles_found} / {vehicles_missed}")
+    print(f"  spurious tracks (no vehicle):  {spurious_tracks}")
+    print(f"  duplicate tracks (same veh):   {duplicate_tracks}")
+    # print(f"  detection precision:           {precision:.3f}")
+    # print(f"  detection recall:              {recall:.3f}")
+    # print(f"  detection F1:                  {f1:.3f}")
+    # print(f"  speed MAE:                     {speed_mae:.2f} m/s  "
+    #       f"({speed_mae*3.6:.2f} km/h)")
+    # print(f"  speed RMSE:                    {speed_rmse:.2f} m/s  "
+    #       f"({speed_rmse*3.6:.2f} km/h)")
+    return metrics
 
 
-# def score(tracks, soft, det, gt_path):
-#     gt = pd.read_csv(gt_path)
+def score(tracks, soft, det, gt_path):
+    gt = pd.read_csv(gt_path)
 
-#     n_tracks = len(tracks)
-#     n_true = len(gt)
-#     print(f"\n=== RESULTS ===")
-#     print(f"true vehicles: {n_true}   estimated tracks: {n_tracks}")
+    n_tracks = len(tracks)
+    n_true = len(gt)
+    print(f"\n=== RESULTS ===")
+    print(f"true vehicles: {n_true}   estimated tracks: {n_tracks}")
 
-#     # speed comparison, printed cleanly in km/h (plain floats, not np.float64)
-#     est_kmh = sorted(round(float(t.u) * 3.6, 1) for t in tracks)
-#     true_kmh = sorted(round(float(s) * 3.6, 1) for s in gt["speed"].tolist())
-#     print(f"\ntrue speeds km/h (sorted):  {true_kmh}")
-#     print(f"est  speeds km/h (sorted):  {est_kmh}")
+    # speed comparison, printed cleanly in km/h (plain floats, not np.float64)
+    est_kmh = [round(float(t.u) * 3.6, 1) for t in tracks]
+    true_kmh = [round(float(s) * 3.6, 1) for s in gt["speed"].tolist()]
+    print(f"\ntrue speeds km/h :  {true_kmh}")
+    print(f"est  speeds km/h :  {est_kmh}")
 
-#     # full metrics
-#     compute_metrics(tracks, soft, det, gt)
+    # full metrics
+    compute_metrics(tracks, soft, det, gt)
 
 
 # ============================================================
@@ -605,8 +602,8 @@ def main():
     print(f"JPDA: {len(clusters)} contested clusters, "
           f"{len(soft)} detections with soft assignments")
 
-    if args.gt:
-        score(tracks, soft, det, args.gt)
+    # if args.gt:
+    #     score(tracks, soft, det, args.gt)
 
 
 if __name__ == "__main__":
