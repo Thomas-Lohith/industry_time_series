@@ -372,10 +372,6 @@ def enumerate_cluster(cl_dids, claim, weight, tracks, did_x, detections):
     return marg
 
 
-
-
-  
-
 def jpda(tracks, detections, postions):
     did_x = detections.set_index('did')['longitudinal_position'].to_dict()
     associations = {}
@@ -385,7 +381,7 @@ def jpda(tracks, detections, postions):
         #detctions only involved in this cluster
         cl_dids = set()
         for track in cl:
-            cl_dids |= set(tracks[track].dids) #union set operation
+            cl_dids |= set(tracks[track].dids) #union set operation(unites tracks)
         
         #per (did, track) base likelihood weight
         weight ={} # (did, track) -> weight
@@ -448,9 +444,6 @@ def main():
     soft,clusters = jpda(tracks, detections, positions)
     print(f'JPDA: {len(clusters)} contested clusters,'
             f'{len(soft)} detections with soft assignments')
-
-    #if args.gt:
-       # score(tracks, soft, detections, args.gt)
 
 if __name__ == '__main__':
     main()

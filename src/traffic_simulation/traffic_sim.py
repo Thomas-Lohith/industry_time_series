@@ -1,23 +1,19 @@
-#!/usr/bin/env python3
-"""
-Bridge Traffic Simulation (v1) — synthetic sensor detection generator.
 
-Produces, per 15-minute window:
+"""
+Bridge Traffic Simulation (v1) — synthetic sensor detections.
+
+Produces, per 15-minute window(why 15 min window- to fuse with the real data ):
   - a DETECTION csv  (noisy per-sensor timestamp events: what the tracker sees)
   - a GROUND-TRUTH csv (which vehicle caused which detection: for scoring MHT/JPDA)
 
 Design decisions (see spec v0.3):
-  * Sensor geometry is read from a sensor CSV (source of truth) — NOT hardcoded.
-  * Only the vertical channel / timestamp is used. Amplitude is NOT modelled.
-  * v1 motion model = constant speed per vehicle (sampled from a distribution).
+  * Sensor geometry is read from a sensor csv file — NOT hardcoded.
+  * Only the vertical channel / timestamp is used. Amplitude is NOT used
+  * second version-- motion model = constant acceleration per vehicle (sampled from a distribution).
   * Travel direction is unused; a vehicle traverses the bridge extent and trips
     every sensor whose DIST_M lies within the span it actually travels.
   * No lateral sides in the real data -> each sensor is its own station;
-    station miss probability = (1 - p_d).  Lateral mode is OFF in v1.
-
-EVERY probability / spread in the config is an UNTUNED placeholder to calibrate.
-This script does not validate them; it just uses them.
-"""
+    station miss probability = (1 - p_d).  """
 
 import argparse
 import csv
@@ -30,8 +26,8 @@ from src.shared.bridge_model import load_bridge
 from src.shared.config import position_csv, threshold_csv, delimiter
 
 # ---------------------------------------------------------------------------
-# Minimal YAML loader: try PyYAML, else fall back to a tiny parser for our
-# specific, flat-ish config so the script runs with no dependencies.
+# Minimal YAML loader: try PyYAML, else fall back to a tiny parser for specific
+# , flat-ish config so the script runs with no dependencies.
 # ---------------------------------------------------------------------------
 def load_config(path):
     try:
@@ -61,7 +57,7 @@ def load_sensors(cfg):
                 "dist_m": float(row[cols["distance"]]),
                 "span": row.get(cols["span"], ""),
             })
-    # Order stations by position so detection sequences are positional.
+    # Order sensor stations by position so detection sequences are positional.
     sensors.sort(key=lambda d: d["dist_m"])
     return sensors
 
@@ -78,15 +74,47 @@ def truncated_normal(rng, mean, std, lo, hi):
     return min(max(rng.gauss(mean, std), lo), hi)
 
 
+def crossing_time(entry_time, dist, v0, a, v_min, v_max):
+    """Time at which a vehicle that entered at entry_time with speed v0 and
+    constant acceleration a has covered `dist` metres.
+
+    Speed is clamped to [v_min, v_max]: once the limit is reached the vehicle
+    continues at that constant speed (piecewise model).
+    """
+    if dist <= 0:
+        return entry_time
+    if a == 0.0:
+        return entry_time + dist / v0
+    v_lim = v_max if a > 0 else v_min
+    t_lim = (v_lim - v0) / a              # time to reach the speed limit
+    d_lim = v0 * t_lim + 0.5 * a * t_lim ** 2
+    if dist <= d_lim:
+        disc = v0 * v0 + 2.0 * a * dist   # >= 0 here because dist <= d_lim
+        t = (-v0 + math.sqrt(max(disc, 0.0))) / a
+    else:
+        t = t_lim + (dist - d_lim) / v_lim
+    return entry_time + t
+
+
 def generate_vehicles(cfg, rng, window_seconds):
-    """Vehicle arrivals over the window; each vehicle gets a constant speed."""
+    """Vehicle arrivals over the window; each vehicle gets a constant speed.
+
+    Gap selection is controlled by traffic.arrival.process:
+      - "poisson":   exponential inter-arrival gap, rate = rate_veh_per_min
+      - "gap_cycle": gaps taken in order from gap_values_s, cycling back to
+                     the start once the list is exhausted (deterministic;
+                     does not consume the RNG). Restarts at index 0 for
+                     every call, i.e. every window.
+    """
     tr = cfg["traffic"]
     arr = tr["arrival"]
     process = arr.get("process", "poisson")
     rate_per_s = arr.get("rate_veh_per_min", 0.0) / 60.0
     gap_values = arr.get("gap_values_s")
     sp = tr["speed"]
- 
+    use_acc = tr.get("motion_model", "constant_speed") == "constant_acceleration"
+    acc = tr.get("acceleration", {})
+
     vehicles = []
     t = 0.0
     v_id = 0
@@ -113,7 +141,9 @@ def generate_vehicles(cfg, rng, window_seconds):
             break
         speed = truncated_normal(rng, sp["mean_mps"], sp["std_mps"],
                                  sp["min_mps"], sp["max_mps"])
-        vehicles.append({"vehicle_id": v_id, "entry_time": t, "speed": speed})
+        a = rng.gauss(acc.get("mean_mps2", 0.0), acc.get("std_mps2", 0.0)) if use_acc else 0.0
+        vehicles.append({"vehicle_id": v_id, "entry_time": t, "speed": speed,
+                         "acceleration": a})
         v_id += 1
     return vehicles
 
@@ -133,11 +163,12 @@ def simulate_window(cfg, sensors, rng, window_id, window_seconds):
     lo_pos, hi_pos = min(entry_pos, exit_pos), max(entry_pos, exit_pos)
 
     sigma_t = det["sigma_t_s"]
-    p_d = det["p_d"]
+    p_d = det.get("p_d", 1.0)          # removed from config -> every crossing detected
     t_merge = det["t_merge_s"]
-    far = det["false_alarm"]["rate_per_station_per_min"]
+    far = det.get("false_alarm", {}).get("rate_per_station_per_min", 0.0)  # removed -> no clutter
 
     vehicles = generate_vehicles(cfg, rng, window_seconds)
+    sp_cfg = cfg["traffic"]["speed"]
 
     # 1) TRUE crossing events: (time, sensor, vehicle)
     raw_events = []   # ground-truth-caused detections before merge/miss
@@ -145,6 +176,7 @@ def simulate_window(cfg, sensors, rng, window_id, window_seconds):
             "vehicle_id": v["vehicle_id"],
             "entry_time": v["entry_time"],
             "speed": v["speed"],
+            "acceleration": v["acceleration"],
             "true_crossing_time_per_station": {},
             "caused_detection_ids": [],
             "missed_stations": [],
@@ -158,7 +190,8 @@ def simulate_window(cfg, sensors, rng, window_id, window_seconds):
                 continue  # sensor not within the span this vehicle travels
             # distance from entry to this sensor along the bridge
             travel = abs(d - entry_pos)
-            t_true = v["entry_time"] + travel / v["speed"]
+            t_true = crossing_time(v["entry_time"], travel, v["speed"], v["acceleration"],
+                                   sp_cfg["min_mps"], sp_cfg["max_mps"])
             gt[v["vehicle_id"]]["true_crossing_time_per_station"][s["sensor_id"]] = round(t_true, 4)
 
             # detection model: miss with prob (1 - p_d)
@@ -273,7 +306,7 @@ def write_outputs(cfg, detections, gt, window_id, out_dir):
 
     with open(os.path.join(out_dir, gt_name), "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["vehicle_id", "entry_time", "speed",
+        w.writerow(["vehicle_id", "entry_time", "speed", "acceleration",
                     "true_crossing_time_per_station", "caused_detection_ids",
                     "missed_stations", "merged_with"])
         for vid, g in sorted(gt.items()):
@@ -281,6 +314,7 @@ def write_outputs(cfg, detections, gt, window_id, out_dir):
                 g["vehicle_id"],
                 f'{g["entry_time"]:.4f}',
                 f'{g["speed"]:.3f}',
+                f'{g["acceleration"]:.4f}',
                 json.dumps(g["true_crossing_time_per_station"]),
                 json.dumps(g["caused_detection_ids"]),
                 json.dumps(g["missed_stations"]),
@@ -416,8 +450,8 @@ _HTML_TEMPLATE = r"""../traffic_simulation/sim.html"""
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True, default=None)
-    ap.add_argument("--out", required=True, default=None)
+    ap.add_argument("--config", default="src/traffic_simulation/traffic_sim_config.yaml")
+    ap.add_argument("--out", default=None)
     ap.add_argument("--viz", choices=["none", "html", "mpl", "both"],
                     default="none",
                     help="Generate a detection-stream visualization for each "

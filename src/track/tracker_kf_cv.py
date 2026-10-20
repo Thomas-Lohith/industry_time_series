@@ -549,7 +549,7 @@ def main():
     #print (tracks)
 
     soft, clusters = jpda_soft(tracks, det, positions)
-    #print(clusters)
+    #print(soft)
     print(f"JPDA: {len(clusters)} contested clusters, {len(soft)} detections with soft assignments")
 
     if args.gt:
