@@ -76,7 +76,7 @@ class CFG:
 
 
     # --- PROVISIONAL (seeding / gating, unchanged from tracker.py) ---
-    EPSILON_T    = 0.500
+    EPSILON_T    = 0.800
     N_NEIGHBOURS = 4
     DELTA_V      = 2.0
     K_GATE       = 4.0
@@ -572,7 +572,7 @@ def score(tracks, soft, det, gt_path):
     true_kmh = [round(float(s) * 3.6, 1) for s in gt["speed"].tolist()]
     print(f"\ntrue speeds km/h :  {true_kmh}")
     print(f"est  speeds km/h :  {est_kmh}")
-    compute_metrics(tracks, soft, det, gt)
+    #compute_metrics(tracks, soft, det, gt)
 
 
 # ============================================================

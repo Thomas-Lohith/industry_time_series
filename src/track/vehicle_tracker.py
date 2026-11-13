@@ -13,24 +13,31 @@ import pandas as pd
 
 class cfg:
     #model constants with some intital assumptions
-    SIGMA_T = 0.05 # timestamp noise std
-    P_D = 0.95 #per sensor detection prob
-    T_MERGE = 0.10 # MERGE WINDOW (s)
+    SIGMA_T = 0.05 # timestamp noise std ---->Each detection time equals the true crossing time plus Gaussian noise of this size.
+    P_D = 0.99 #per sensor detection prob ---
+    T_MERGE = 0.05 # MERGE WINDOW (s).   ---> If two vehicles cross a sensor within 0.10 s of each other, the sensor may produce only one detection.
+    #change to 0.05
+    
+    #---> The clutter rate is the rate at which the sensor produces detections that are not from vehicles crossing the bridge.
     LAMBDA_FALSE = 0.2 #Clutter rate per sensor per minute
-    V_MIN = 11.0 #m/s -->39.6km/hr physical gate min
+
+    #physical gate parameters from the wieghing data or traffic data!!
+    V_MIN = 18 #m/s -->39.6km/hr physical gate min #########the min speed of the vehicles on the bridge are considered according to how min....
     V_MAX = 50.0 #m/s -->180km/hr physical gate max
     MU_V = 22.5 # SPEED prior mean -->81km/hr
     SIGMA_V = 2.0 # SPEED prior std --->7.2 km/hr
 
     # testing and tunable -- empirically
-    EPSILON_T = 0.800 # physical gate time slack (widened from 50 ms)
+    EPSILON_T = 0.800 # physical gate time slack (widened from ms)
     N_NEIGHBOURS = 4 # forward neighbour postions used for tracks(should
                     # avoid the co-located sensor on the pther side )
     DELTA_V = 2.0 # vehciel sep
     K_GATE = 4.0 # statistical gate width multiplier (k * sigma_t)
-    K_PRUNE = 100.0 # MHT realtive pruning constant
-    N_SCAN = 3 # number of scan commit horizons (positions)
+    #K_PRUNE = 100.0 # MHT realtive pruning constant
+    #N_SCAN = 3 # number of scan commit horizons (positions)
+    duplication_rat = 0.5 #####keep it sensitivity analysi by s
 
+STATS = {"clusters": 0, "fallback": 0, "fallback_dets": 0, "max_combos": 0}
 
 ##################################################################
 # step 1- Loader
@@ -268,7 +275,7 @@ def dedup_tracks(tracks):
             ks =set(k.dids)
             inter = len(ds & ks)
             #overlap relative to the smaller trackkkkkkkkkkkkkkkk
-            if inter / max(1, min(len(ds), len(ks))) > 0.3:
+            if inter / max(1, min(len(ds), len(ks))) > cfg.duplication_rat: ########
                 dup = True
                 break
         if not dup:
@@ -328,8 +335,13 @@ def enumerate_cluster(cl_dids, claim, weight, tracks, did_x, detections):
         total *= len(options[d])
     marg = {d: {} for d in keys}
     Z = 0.0
+    print(total)
+    STATS["clusters"] += 1
+    STATS["max_combos"] = max(STATS["max_combos"], total)
 
-    if total >200000:
+    if total > 200000:
+        STATS["fallback"] += 1
+        STATS["fallback_dets"] += len(keys)
         #fallback: per detection independent normalisation
         for d in keys:
             num = {}
@@ -444,6 +456,9 @@ def main():
     soft,clusters = jpda(tracks, detections, positions)
     print(f'JPDA: {len(clusters)} contested clusters,'
             f'{len(soft)} detections with soft assignments')
+    print(f"JPDA fallback (total > 200000): {STATS['fallback']} of {STATS['clusters']} clusters, "
+        f"{STATS['fallback_dets']} detections affected, "
+        f"largest cluster = {STATS['max_combos']} combinations")
 
 if __name__ == '__main__':
     main()
