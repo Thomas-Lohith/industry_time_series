@@ -1,21 +1,26 @@
-
+#!/usr/bin/env python3
 """
-Bridge Traffic Simulation (v1) — synthetic sensor detections.
+Bridge Traffic Simulation (v1) — synthetic sensor detection generator.
 
-Produces, per 15-minute window(why 15 min window- to fuse with the real data ):
+Produces, per 15-minute window:
   - a DETECTION csv  (noisy per-sensor timestamp events: what the tracker sees)
   - a GROUND-TRUTH csv (which vehicle caused which detection: for scoring MHT/JPDA)
 
 Design decisions (see spec v0.3):
-  * Sensor geometry is read from a sensor csv file — NOT hardcoded.
-  * Only the vertical channel / timestamp is used. Amplitude is NOT used
-  * second version-- motion model = constant acceleration per vehicle (sampled from a distribution).
+  * Sensor geometry is read from a sensor CSV (source of truth) — NOT hardcoded.
+  * Only the vertical channel / timestamp is used. Amplitude is NOT modelled.
+  * v1 motion model = constant speed per vehicle (sampled from a distribution).
   * Travel direction is unused; a vehicle traverses the bridge extent and trips
     every sensor whose DIST_M lies within the span it actually travels.
   * No lateral sides in the real data -> each sensor is its own station;
-    station miss probability = (1 - p_d).  """
+    station miss probability = (1 - p_d).  Lateral mode is OFF in v1.
+
+EVERY probability / spread in the config is an UNTUNED placeholder to calibrate.
+This script does not validate them; it just uses them.
+"""
 
 import argparse
+import bisect
 import csv
 import json
 import math
@@ -26,8 +31,8 @@ from src.shared.bridge_model import load_bridge
 from src.shared.config import position_csv, threshold_csv, delimiter
 
 # ---------------------------------------------------------------------------
-# Minimal YAML loader: try PyYAML, else fall back to a tiny parser for specific
-# , flat-ish config so the script runs with no dependencies.
+# Minimal YAML loader: try PyYAML, else fall back to a tiny parser for our
+# specific, flat-ish config so the script runs with no dependencies.
 # ---------------------------------------------------------------------------
 def load_config(path):
     try:
@@ -57,7 +62,7 @@ def load_sensors(cfg):
                 "dist_m": float(row[cols["distance"]]),
                 "span": row.get(cols["span"], ""),
             })
-    # Order sensor stations by position so detection sequences are positional.
+    # Order stations by position so detection sequences are positional.
     sensors.sort(key=lambda d: d["dist_m"])
     return sensors
 
@@ -94,6 +99,101 @@ def crossing_time(entry_time, dist, v0, a, v_min, v_max):
     else:
         t = t_lim + (dist - d_lim) / v_lim
     return entry_time + t
+
+
+# ---------------------------------------------------------------------------
+# Trajectory builders (per-vehicle speed history along the bridge)
+# ---------------------------------------------------------------------------
+# A trajectory is a list of segments (x0, t0, v0, a, dur):
+#   x0  : distance from entry at segment start (m)
+#   t0  : time since entry at segment start (s)
+#   v0  : speed at segment start (m/s)
+#   a   : constant acceleration within the segment (m/s^2)
+#   dur : segment duration (s)
+# Speed is continuous across segments. Any new driver model only has to return
+# this list; trajectory_crossing_time() then works unchanged.
+# Vehicles are independent: they do not react to each other.
+def _split_at_speed_limit(v, a, dur, v_min, v_max):
+    """Split one (a, dur) phase so speed never leaves [v_min, v_max]; after the
+    limit is reached the vehicle cruises at that limit for the rest of dur."""
+    eps = 1e-9
+    if a > 0 and v + a * dur > v_max:
+        t1 = (v_max - v) / a
+    elif a < 0 and v + a * dur < v_min:
+        t1 = (v_min - v) / a
+    else:
+        return [(dur, a)]
+    if t1 <= eps:
+        return [(dur, 0.0)]
+    return [(t1, a), (dur - t1, 0.0)]
+
+
+def build_maneuver_trajectory(rng, cfg, v0, length_m):
+    """Independent maneuver chain: cruise/accelerate/coast/brake phases chosen by
+    a Markov chain whose weights are biased by how far speed is from the
+    vehicle's desired speed (its entry speed)."""
+    tr = cfg["traffic"]
+    man = tr["maneuvers"]
+    v_min, v_max = tr["speed"]["min_mps"], tr["speed"]["max_mps"]
+    phases = man["phases"]
+    trans = man["transitions"]
+    k = man.get("speed_bias", 0.0)
+    v_des = v0
+
+    phase = man.get("initial_phase", "cruise")
+    segs = []
+    x = t = 0.0
+    v = v0
+    for _ in range(100000):
+        if x >= length_m:
+            break
+        ph = phases[phase]
+        dur = rng.uniform(*ph["duration_s"])
+        a = truncated_normal(rng, ph["accel_mean_mps2"], ph["accel_std_mps2"],
+                             *ph["accel_range_mps2"])
+        for d_seg, a_seg in _split_at_speed_limit(v, a, dur, v_min, v_max):
+            if d_seg <= 0:
+                continue
+            segs.append((x, t, v, a_seg, d_seg))
+            x += v * d_seg + 0.5 * a_seg * d_seg ** 2
+            t += d_seg
+            v = min(max(v + a_seg * d_seg, v_min), v_max)
+
+        # next phase: transition weights, biased by speed deviation
+        dev = (v_des - v) / v_des          # >0: below desired speed
+        names, weights = [], []
+        for nxt, w in trans[phase].items():
+            mean_a = phases[nxt]["accel_mean_mps2"]
+            if mean_a > 0:
+                w *= math.exp(k * dev)
+            elif mean_a < 0:
+                w *= math.exp(-k * dev)
+            names.append(nxt)
+            weights.append(w)
+        phase = rng.choices(names, weights=weights)[0]
+    else:
+        raise RuntimeError("maneuver trajectory did not reach the bridge end")
+    return segs
+
+
+TRAJECTORY_BUILDERS = {"maneuver_chain": build_maneuver_trajectory}
+
+
+def trajectory_crossing_time(entry_time, dist, segs):
+    """Exact time at which a vehicle with trajectory `segs` has travelled `dist`."""
+    if dist <= 0:
+        return entry_time
+    x0s = [sg[0] for sg in segs]
+    i = max(bisect.bisect_right(x0s, dist) - 1, 0)
+    x0, t0, v0, a, _ = segs[i]
+    dx = dist - x0
+    # stable root of 0.5*a*tau^2 + v0*tau - dx = 0 (also valid for a = 0)
+    tau = 2.0 * dx / (v0 + math.sqrt(max(v0 * v0 + 2.0 * a * dx, 0.0)))
+    return entry_time + t0 + tau
+
+
+def trajectory_to_json(segs):
+    return [[round(sg[4], 3), round(sg[3], 3), round(sg[2], 3)] for sg in segs]
 
 
 def generate_vehicles(cfg, rng, window_seconds):
@@ -169,6 +269,11 @@ def simulate_window(cfg, sensors, rng, window_id, window_seconds):
 
     vehicles = generate_vehicles(cfg, rng, window_seconds)
     sp_cfg = cfg["traffic"]["speed"]
+    motion = cfg["traffic"].get("motion_model", "constant_speed")
+    if motion in TRAJECTORY_BUILDERS:
+        for v in vehicles:
+            v["trajectory"] = TRAJECTORY_BUILDERS[motion](
+                rng, cfg, v["speed"], (hi_pos - lo_pos) + 1.0)
 
     # 1) TRUE crossing events: (time, sensor, vehicle)
     raw_events = []   # ground-truth-caused detections before merge/miss
@@ -176,7 +281,8 @@ def simulate_window(cfg, sensors, rng, window_id, window_seconds):
             "vehicle_id": v["vehicle_id"],
             "entry_time": v["entry_time"],
             "speed": v["speed"],
-            "acceleration": v["acceleration"],
+            "acceleration": None if "trajectory" in v else v["acceleration"],
+            "trajectory": trajectory_to_json(v["trajectory"]) if "trajectory" in v else [],
             "true_crossing_time_per_station": {},
             "caused_detection_ids": [],
             "missed_stations": [],
@@ -190,8 +296,11 @@ def simulate_window(cfg, sensors, rng, window_id, window_seconds):
                 continue  # sensor not within the span this vehicle travels
             # distance from entry to this sensor along the bridge
             travel = abs(d - entry_pos)
-            t_true = crossing_time(v["entry_time"], travel, v["speed"], v["acceleration"],
-                                   sp_cfg["min_mps"], sp_cfg["max_mps"])
+            if "trajectory" in v:
+                t_true = trajectory_crossing_time(v["entry_time"], travel, v["trajectory"])
+            else:
+                t_true = crossing_time(v["entry_time"], travel, v["speed"], v["acceleration"],
+                                       sp_cfg["min_mps"], sp_cfg["max_mps"])
             gt[v["vehicle_id"]]["true_crossing_time_per_station"][s["sensor_id"]] = round(t_true, 4)
 
             # detection model: miss with prob (1 - p_d)
@@ -306,7 +415,7 @@ def write_outputs(cfg, detections, gt, window_id, out_dir):
 
     with open(os.path.join(out_dir, gt_name), "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["vehicle_id", "entry_time", "speed", "acceleration",
+        w.writerow(["vehicle_id", "entry_time", "speed", "acceleration", "trajectory",
                     "true_crossing_time_per_station", "caused_detection_ids",
                     "missed_stations", "merged_with"])
         for vid, g in sorted(gt.items()):
@@ -314,7 +423,8 @@ def write_outputs(cfg, detections, gt, window_id, out_dir):
                 g["vehicle_id"],
                 f'{g["entry_time"]:.4f}',
                 f'{g["speed"]:.3f}',
-                f'{g["acceleration"]:.4f}',
+                "" if g["acceleration"] is None else f'{g["acceleration"]:.4f}',
+                json.dumps(g["trajectory"]),
                 json.dumps(g["true_crossing_time_per_station"]),
                 json.dumps(g["caused_detection_ids"]),
                 json.dumps(g["missed_stations"]),
@@ -399,7 +509,11 @@ def render_matplotlib(detections, gt, sensors, window_id, out_dir,
         evs2 = [e for e in evs if in_win(e)]
         if len(evs2) < 1:
             continue
-        evs2.sort(key=lambda e: e["detection_time"])   # order along time
+        # Connect in sensor (position) order, NOT detection-time order: sensors
+        # at the same DIST_M have identical true crossing times, so sorting by
+        # noisy recorded time would shuffle them and draw the track going
+        # back and forth along x. Time breaks ties for the same sensor.
+        evs2.sort(key=lambda e: (idx_of[e["sensor_id"]], e["detection_time"]))
         col = palette[vid % len(palette)]
         xs = [idx_of[e["sensor_id"]] for e in evs2]
         ys = [e["detection_time"] for e in evs2]
@@ -437,20 +551,27 @@ def render_html(det_name, gt_name, sensors, window_id, out_dir,
         "det_file": det_name,
         "gt_file": gt_name,
     }
-    html = _HTML_TEMPLATE.replace("/*__META__*/", json.dumps(meta))
+    with open(_TEMPLATE_PATH, encoding="utf-8") as f:
+        template = f.read()
+    if _META_MARKER not in template:
+        raise ValueError(f"{_TEMPLATE_PATH} has no {_META_MARKER!r} marker")
+    html = template.replace(_META_MARKER, json.dumps(meta), 1)
     path = os.path.join(out_dir, f"viewer_window_{window_id}.html")
     with open(path, "w") as f:
         f.write(html)
     return path
 
 
-_HTML_TEMPLATE = r"""../traffic_simulation/sim.html"""
+# # Viewer template lives next to this script; the marker below is replaced by
+# # the window metadata (see sim.html).
+# _TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sim.html")
+# _META_MARKER = "/*__META__*/{}"
 
 
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="src/traffic_simulation/traffic_sim_config.yaml")
+    ap.add_argument("--config", default="/Users/thomas/Desktop/github_repos/industry_time_series/src/config/traffic_sim_config.yaml")
     ap.add_argument("--out", default=None)
     ap.add_argument("--viz", choices=["none", "html", "mpl", "both"],
                     default="none",
@@ -505,12 +626,12 @@ def main():
         summary.append(entry)
 
     print(json.dumps(summary, indent=2))
-    if args.viz in ("html", "both"):
-        print("\nTip: open the .html viewer via a local server so it can "
-              "auto-load the CSVs:\n  cd %s && python3 -m http.server\n"
-              "then browse to the viewer_window_*.html file. Opening the file "
-              "directly (file://) also works — use the file pickers to select "
-              "the two CSVs." % out_dir)
+    # if args.viz in ("html", "both"):
+    #     print("\nTip: open the .html viewer via a local server so it can "
+    #           "auto-load the CSVs:\n  cd %s && python3 -m http.server\n"
+    #           "then browse to the viewer_window_*.html file. Opening the file "
+    #           "directly (file://) also works — use the file pickers to select "
+    #           "the two CSVs." % out_dir)
 
 
 if __name__ == "__main__":
